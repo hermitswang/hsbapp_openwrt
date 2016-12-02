@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hsb>
+	<device id="1">
+		<type>2</type>
+		<name>remote</name>
+		<location>客厅</location>
+	</device>
+	<device id="2">
+		<type>4</type>
+		<name>格力</name>
+		<location>客厅</location>
+	</device>
+	<device id="3">
+		<type>3</type>
+		<name>机顶盒</name>
+		<location>客厅</location>
+	</device>
+	<device id="4">
+		<type>0</type>
+		<name>大灯</name>
+		<location>客厅</location>
+	</device>
+	<device id="5">
+		<type>1</type>
+		<name>传感器</name>
+		<location>客厅</location>
+	</device>
+</hsb>
