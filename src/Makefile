@@ -13,9 +13,9 @@ HSB_LIBS_SRC = $(wildcard $(HSBROOT)/lib/*.c)
 HSB_LIBS = $(patsubst %.c,%.obj,$(HSB_LIBS_SRC) ) 
 HSB_INCLUDES=-I$(HSBROOT)/include
 
-MISC_LIBS=-lrt -lm  # for clock_gettime()
+MISC_LIBS=-lrt -lm -lasound
 
-ARCH=x86
+ARCH=mips
 
 EXEDIR=${HSBROOT}/install
 
@@ -26,9 +26,9 @@ LDFLAGS=$(HSB_LIBS) $(MISC_LIBS) $(GLIB_LIBS)
 
 export ARCH CC CFLAGS HSB_INCLUDES HSB_LIBS  LDFLAGS CFLAGS  PKG_CONFIG_PATH EXEDIR
 
-.PHONY:  Id  dep lib misc drivers
+.PHONY:  dep lib misc
 
-SUBDIR=lib core_daemon misc
+SUBDIR=lib core_daemon awaken_daemon asr_daemon misc
 all :
 	for i in ${SUBDIR}; do make all -C "$${i}" ; done
 
@@ -41,6 +41,12 @@ exp :
 core : lib
 	make all -C core_daemon
 
+awaken : lib
+	make all -C awaken_daemon
+
+asr : lib
+	make all -C asr_daemon
+
 misc : lib
 	make all -C misc
 
@@ -49,14 +55,5 @@ dep:
 
 clean:
 	for i in ${SUBDIR}; do make clean -C "$${i}" ; done 
-
-Id:	
-	find . -name "*.[ch]" |xargs svn -R propset svn:keywords "Id" 
-
-add:
-	@find . -name "*.[ch]" |xargs svn add
-	@find . -name Makefile |xargs svn add
-
-drivers:
-	make -C drivers/ioctrl
+	@rm install/* -fr
 
