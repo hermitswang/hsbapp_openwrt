@@ -24,7 +24,7 @@ all :  ${TARGET}
 
 clean:
 	@rm -fr ${TARGET} *.o core .dep
-	@rm -fr msc
+	# @rm -fr msc
 
 dep: 
 	@mkdir -p .dep

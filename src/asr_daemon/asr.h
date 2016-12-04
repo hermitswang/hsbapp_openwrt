@@ -11,7 +11,8 @@
 
 
 struct asr_notifier {
-	void (*on_result)(int errcode, const char *result);
+	void (*on_error)(int errcode);
+	void (*on_result)(const char *result);
 };
 
 struct asr_rec {

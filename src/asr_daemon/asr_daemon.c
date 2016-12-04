@@ -217,10 +217,14 @@ asr_exit:
 	QISRSessionEnd(session_id, hints);
 }
 
-static void on_asr_result(int errcode, const char *result)
+static void on_asr_error(int errcode)
 {
-	printf("asr result: %d\n", errcode);
-	printf("%s\n", result);
+	printf("asr error: %d\n", errcode);
+}
+
+static void on_asr_result(const char *result)
+{
+	printf("asr result: %s\n", result);
 }
 
 static int demo_asr(const char *session_begin_params, const char *grammar_id)
@@ -237,14 +241,17 @@ static int demo_asr(const char *session_begin_params, const char *grammar_id)
 		goto asr_exit;
 	}
 
-	ret = asr_start_listening(&asrr);
-	if (0 != ret) {
-		printf("asr start listening fail: %d\n", ret);
-		goto asr_exit;
-	}
 
+	printf("wait...\n");
 	while (1) {
-		sleep(1);
+		ret = asr_start_listening(&asrr);
+		if (0 != ret) {
+			printf("asr start listening fail: %d\n", ret);
+			goto asr_exit;
+		}
+
+		
+
 	}
 
 	asr_stop_listening(&asrr);

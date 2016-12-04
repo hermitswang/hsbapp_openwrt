@@ -53,30 +53,16 @@ static void end_asr_on_error(struct asr_rec *asrr, int errcode)
 
 	const char *errstr;
 
-	if (errcode)
-		errstr = "err";
-	else
-		errstr = "ok";
-
 	if (asrr->session_id) {
-		QISRSessionEnd(asrr->session_id, errstr);
+		QISRSessionEnd(asrr->session_id, "err");
 			
 		asrr->session_id = NULL;
 	}
 
 	asrr->state = ASR_STATE_INIT;
 
-	if (asrr->notify.on_result) {
-		if (errcode)
-			asrr->notify.on_result(errcode, errstr);
-		else {
-			int rec_stat, errc;
-			const char *rslt = QISRGetResult(asrr->session_id, &rec_stat, 0, &errc);
-
-			if (MSP_REC_STATUS_COMPLETE == errc && rslt)
-				asrr->notify.on_result(errcode, rslt);
-		}
-	}
+	if (asrr->notify.on_error)
+		asrr->notify.on_error(errcode);
 
 	asr_dbg("end_asr_on_error\n");
 }
@@ -266,22 +252,66 @@ int asr_stop_listening(struct asr_rec *asrr)
 static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int len)
 {
 	int ret = 0;
-	int ep_status, rec_status;
+	int ep_stat = MSP_EP_LOOKING_FOR_SPEECH;
+	int rec_stat = MSP_REC_STATUS_SUCCESS;
 	if (!asrr )
 		return -E_ASR_INVAL;
 
 	if (!data || !len)
 		return 0;
 
-	ret = QISRAudioWrite(asrr->session_id, data, len, asrr->audio_status, &ep_status, &rec_status);
+	ret = QISRAudioWrite(asrr->session_id, data, len, asrr->audio_status, &ep_stat, &rec_stat);
 	if (ret) {
 		end_asr_on_error(asrr, ret);
 
 		return ret;
 	}
 
-	if (MSP_REC_STATUS_COMPLETE == rec_status)
-		end_asr_on_error(asrr, ret);
+	if (MSP_EP_AFTER_SPEECH == ep_stat) {
+		printf("after speech\n");
+
+		char rec_result[256];
+
+		memset(rec_result, 0, sizeof(rec_result));
+
+		ret = QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_stat, &rec_stat);
+
+		if (ret) {
+			printf("QISRAudioWrite failed, err=%d\n", ret);
+			end_asr_on_error(asrr, ret);
+		}
+
+		while (MSP_REC_STATUS_COMPLETE != rec_stat) {
+			int errcode, total_len = 0;
+			const char *rslt = QISRGetResult(asrr->session_id, &rec_stat, 0, &errcode);
+	                if (MSP_SUCCESS != errcode)
+			{
+				printf("\nQISRGetResult failed, error code: %d\n", errcode);
+				end_asr_on_error(asrr, errcode);
+				return errcode;
+			}
+
+			if (NULL != rslt)
+			{
+				unsigned int rslt_len = strlen(rslt);
+				total_len += rslt_len;
+				if (total_len >= 256)
+				{
+					printf("\nno enough buffer for rec_result !\n");
+					end_asr_on_error(asrr, errcode);
+					return -1;
+				}
+				strncat(rec_result, rslt, rslt_len);
+			}
+			usleep(150*1000); //防止频繁占用CPU
+		}
+
+		printf("result: %s\n", rec_result);
+		if (asrr->notify.on_result)
+			asrr->notify.on_result(rec_result);
+
+		return 0;
+	}
 
 	asrr->audio_status = MSP_AUDIO_SAMPLE_CONTINUE;
 
