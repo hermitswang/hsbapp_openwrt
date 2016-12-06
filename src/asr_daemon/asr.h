@@ -18,10 +18,10 @@ struct asr_notifier {
 struct asr_rec {
 	struct asr_notifier notify;
 	const char *session_id;
-	const char *grammar;
 	int audio_status;
 	struct recorder *recorder;
 	volatile int state;
+	char grammar_id[256];
 	char session_params[256];
 };
 
@@ -33,8 +33,11 @@ extern "C" {
 int asr_init(
 	struct asr_rec *asrr,
 	const char *session_begin_params, 
-	const char *grammar_id,
 	struct asr_notifier *notify);
+
+int asr_set_grammar_id(
+	struct asr_rec *asrr,
+        const char *grammar_id);
 
 int asr_start_listening(struct asr_rec *asrr);
 

@@ -1,11 +1,14 @@
-/*
-* 语音识别（Automatic Speech Recognition）技术能够从语音中识别出特定的命令词或语句模式。
-*/
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <glib.h>
 #include <unistd.h>
+#include "unix_socket.h"
+#include "daemon_control.h"
+#include "hsb_config.h"
+#include "debug.h"
+#include "utils.h"
 
 #include "qisr.h"
 #include "msp_cmn.h"
@@ -17,16 +20,17 @@
 #define HINTS_SIZE  100
 #define GRAMID_LEN	128
 #define FRAME_LEN	640 
- 
+
+
 int get_grammar_id(char* grammar_id, unsigned int id_len)
 {
-	FILE*			fp				=	NULL;
-	char*			grammar			=	NULL;
-	unsigned int	grammar_len		=	0;
-	unsigned int	read_len		=	0;
-	const char*		ret_id			=	NULL;
-	unsigned int	ret_id_len		=	0;
-	int				ret				=	-1;	
+	FILE *fp = NULL;
+	char *grammar = NULL;
+	unsigned int grammar_len = 0;
+	unsigned int read_len = 0;
+	const char *ret_id = NULL;
+	unsigned int ret_id_len = 0;
+	int ret = -1;	
 
 	if (NULL == grammar_id)
 		goto grammar_exit;
@@ -86,6 +90,8 @@ grammar_exit:
 	}
 	return ret;
 }
+
+#if 0
 
 void run_asr(const char* audio_file, const char* params, char* grammar_id)
 {
@@ -217,6 +223,8 @@ asr_exit:
 	QISRSessionEnd(session_id, hints);
 }
 
+#endif
+
 static void on_asr_error(int errcode)
 {
 	printf("asr error: %d\n", errcode);
@@ -227,99 +235,110 @@ static void on_asr_result(const char *result)
 	printf("asr result: %s\n", result);
 }
 
-static int demo_asr(const char *session_begin_params, const char *grammar_id)
+static int deal_asr_cmd(daemon_listen_data *dla, struct asr_rec *pasr)
 {
-	int ret;
-	struct asr_rec asrr;
-	struct asr_notifier notify = {
-		on_asr_result,
-	};
+	char *buf = dla->cmd_buf;
 
-	ret = asr_init(&asrr, session_begin_params, grammar_id, &notify);
-	if (0 != ret) {
-		printf("asr init fail: %d\n", ret);
-		goto asr_exit;
-	}
+	if (check_cmd_prefix(buf, "start")) {
+		asr_start_listening(pasr);
+	} else if (check_cmd_prefix(buf, "stop")) {
+		asr_stop_listening(pasr);
+	} else if (check_cmd_prefix(buf, "set_grammar=")) {
+		char *grammar = buf + strlen("set_grammar=");
 
+		int ret;
+		const char *grammar_id;
 
-	printf("wait...\n");
-	while (1) {
-		ret = asr_start_listening(&asrr);
-		if (0 != ret) {
-			printf("asr start listening fail: %d\n", ret);
-			goto asr_exit;
+		grammar_id = MSPUploadData("usergram", grammar, strlen(grammar), "dtt = abnf, sub = asr", &ret);
+		if (MSP_SUCCESS != ret)
+		{
+			printf("\nMSPUploadData failed, error code: %d.\n", ret);
+			return -1;
 		}
 
-		
-
+		asr_set_grammar(pasr, grammar_id);
+	} else {
+		hsb_warning("asr_daemon get unknown cmd: [%s]\n", buf);
 	}
 
-	asr_stop_listening(&asrr);
-	asr_uninit(&asrr);
-
 	return 0;
-
-asr_exit:
-
-	asr_stop_listening(&asrr);
-	asr_uninit(&asrr);
-
-	return -1;
 }
 
 int main(int argc, char* argv[])
-{	
-	int			ret						=	MSP_SUCCESS;
-	const char* login_params			=	"appid = 57e4884c, work_dir = ."; //登录参数,appid与msc库绑定,请勿随意改动
-	/*
-	* sub:             请求业务类型
-	* result_type:     识别结果格式
-	* result_encoding: 结果编码格式
-	*
-	* 详细参数说明请参阅《讯飞语音云MSC--API文档》
-	*/
-	const char*	session_begin_params	=	"sub = asr, result_type = plain, result_encoding = utf8";
-	char*		grammar_id				=	NULL;
+{
+	int opt, ret;
+	struct asr_rec asrr = { 0 };
+	struct asr_notifier notify = {
+		on_asr_error,
+		on_asr_result,
+	};
+
+	const char* session_begin_params = "sub = asr, result_type = plain, result_encoding = utf8";
+	const char* login_params = "appid = 57e4884c, work_dir = /tmp/hsb/asr";
+
+	gboolean background = FALSE;    
+
+	debug_verbose = DEBUG_DEFAULT_LEVEL;
+	opterr = 0;
+	while ((opt = getopt (argc, argv, "d:b")) != -1)
+		switch (opt) {
+		case 'b':
+			background = TRUE;
+			break;            
+		case 'd':
+			debug_verbose = atoi(optarg);
+			break;
+		default:
+			break;
+		}
+ 
+	if (!daemon_init(&hsb_asr_daemon_config, background))
+	{
+		hsb_critical("init asr daemon error\n");
+		return -1;
+	}
 	
-	/* 用户登录 */
-	ret = MSPLogin(NULL, NULL, login_params); //第一个参数是用户名，第二个参数是密码，均传NULL即可，第三个参数是登录参数
+	ret = MSPLogin(NULL, NULL, login_params);
 	if (MSP_SUCCESS != ret)
 	{
 		printf("MSPLogin failed, error code: %d.\n",ret);
-		goto exit; //登录失败，退出登录
+		return -2;
 	}
 
-	printf("\n##################################################\n");
-	printf("## 语音识别（Automatic Speech Recognition）技术 ##\n");
-	printf("## 能够从语音中识别出特定的命令词或语句模式。   ##\n");
-	printf("##################################################\n\n");
+	char grammar_id[128];
+        memset(grammar_id, 0, 128);
 
-	grammar_id = (char*)malloc(GRAMID_LEN);
-	if (NULL == grammar_id)
-	{
-		printf("out of memory !\n");
-		goto exit;
+#if 1
+        printf("上传语法 ...\n");
+        ret = get_grammar_id(grammar_id, 128);
+        if (MSP_SUCCESS != ret)
+		return -3;
+        printf("上传语法成功\n");
+#endif
+	ret = asr_init(&asrr, session_begin_params, &notify);
+	if (0 != ret) {
+		printf("asr init fail: %d\n", ret);
+		return -3;
 	}
-	memset(grammar_id, 0, GRAMID_LEN);
 
-	printf("上传语法 ...\n");
-	ret = get_grammar_id(grammar_id, GRAMID_LEN);
-	if (MSP_SUCCESS != ret)
-		goto exit;
-	printf("上传语法成功\n");
+	daemon_listen_data dla;
+	while (1) {
+		struct timeval tv = { 1, 0 };
+again:
+		daemon_select(hsb_asr_daemon_config.unix_listen_fd, &tv, &dla);
+		if (dla.recv_time != 0) {
+			deal_asr_cmd(&dla, &asrr);
 
- 	//run_asr("wav/iflytek01.wav", session_begin_params, grammar_id); //iflytek01对应的音频内容：“18012345678”
-
-	demo_asr(session_begin_params, grammar_id);
-exit:
-	if (NULL != grammar_id)
-	{
-		free(grammar_id);
-		grammar_id = NULL;
+			goto again;
+		}
 	}
-	printf("按任意键退出 ...\n");
-	getchar();
-	MSPLogout(); //退出登录
+
+	asr_stop_listening(&asrr);
+	asr_uninit(&asrr);
+
+	MSPLogout();
 
 	return 0;
 }
+
+

@@ -68,7 +68,6 @@ int daemon_select(int unix_listen_fd, struct timeval *tv, daemon_listen_data *dl
 	fd_set readset;
 	int max_fd , select_ret ;
 
-select_start:
 	// clear dla first
 	memset(dla, 0, sizeof(*dla));
 

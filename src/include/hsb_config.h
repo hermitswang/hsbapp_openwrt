@@ -45,9 +45,15 @@ static hsb_daemon_config hsb_core_daemon_config = {
 	.unix_listen_fd = -1 ,
 } ;
 
-static hsb_daemon_config hsb_mm_daemon_config = {
-	.pid_file = "hsb_mm_daemon.pid" ,
-	.unix_listen_path = "hsb_mm_daemon.listen" ,	
+static hsb_daemon_config hsb_asr_daemon_config = {
+	.pid_file = "hsb_asr_daemon.pid" ,
+	.unix_listen_path = "hsb_asr_daemon.listen" ,	
+	.unix_listen_fd = -1 ,
+} ;
+
+static hsb_daemon_config hsb_awaken_daemon_config = {
+	.pid_file = "hsb_awaken_daemon.pid" ,
+	.unix_listen_path = "hsb_awaken_daemon.listen" ,	
 	.unix_listen_fd = -1 ,
 } ;
 

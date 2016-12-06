@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "debug.h"
+
 #include "msp_cmn.h"
 #include "qisr.h"
 #include "msp_errors.h"
@@ -67,6 +69,21 @@ static void end_asr_on_error(struct asr_rec *asrr, int errcode)
 	asr_dbg("end_asr_on_error\n");
 }
 
+static void end_asr_on_success(struct asr_rec *asrr, const char *result)
+{
+	stop_record(asrr->recorder);
+	if (asrr->session_id) {
+		QISRSessionEnd(asrr->session_id, "stop ok");
+			
+		asrr->session_id = NULL;
+	}
+
+	asrr->state = ASR_STATE_INIT;
+
+	if (asrr->notify.on_result)
+		asrr->notify.on_result(result);
+}
+
 static void asr_cb(char *data, unsigned long len, void *user_para)
 {
 	struct asr_rec *asrr;
@@ -88,7 +105,6 @@ static void asr_cb(char *data, unsigned long len, void *user_para)
 int asr_init(
 	struct asr_rec *asrr,
 	const char *session_begin_params,
-	const char *grammar_id,
 	struct asr_notifier *notify)
 {
 	int errcode;
@@ -108,7 +124,6 @@ int asr_init(
 
 	snprintf(asrr->session_params, sizeof(asrr->session_params), "%s", session_begin_params);
 
-	asrr->grammar = grammar_id;
 	asrr->notify = *notify;
 	
 	errcode = create_recorder(&asrr->recorder, asr_cb, (void*)asrr);
@@ -138,26 +153,21 @@ fail:
 	return errcode;
 }
 
-#if 0
-int cb_asr_result_proc( const char *sessionID, const char *result, int resultLen, int resultStatus, void *userData)
+
+int asr_set_grammar(
+	struct asr_rec *asrr,
+        const char *grammar_id)
 {
-	struct asr_rec *asrr = (struct asr_rec *)userData;
+	if (strlen(grammar_id) > sizeof(asrr->grammar_id))
+	{
+		hsb_critical("grammar id too long\n");
+		return -1;
+	}
+
+	strcpy(asrr->grammar_id, grammar_id);
 
 	return 0;
 }
-
-int cb_asr_status_proc(const char *sessionID, int type, int status, int param1, const void *param2, void *userData)
-{
-
-	return 0;
-}
-
-int cb_asr_error_proc(const char *sessionID, int errorCode, const char *detail, void *userData)
-{
-
-	return 0;
-}
-#endif
 
 int asr_start_listening(struct asr_rec *asrr)
 {
@@ -171,24 +181,12 @@ int asr_start_listening(struct asr_rec *asrr)
 		return -E_ASR_ALREADY;
 	}
 
-	session_id = QISRSessionBegin(asrr->grammar, asrr->session_params, &errcode);
+	session_id = QISRSessionBegin(asrr->grammar_id, asrr->session_params, &errcode);
 	if (MSP_SUCCESS != errcode)
 	{
 		asr_dbg("\nQISRSessionBegin failed! error code:%d\n", errcode);
 		return errcode;
 	}
-
-#if 0
-	errcode = QISRRegisterNotify(session_id, cb_asr_result_proc, cb_asr_status_proc, cb_asr_error_proc, (void *)asrr);
-	if (errcode != MSP_SUCCESS)
-        {
-                snprintf(sse_hints, sizeof(sse_hints), "QISRRegisterNotify errorCode=%d", errcode);
-                printf("QISRRegisterNotify failed! error code:%d\n", errcode);
-		QISRSessionEnd(session_id, sse_hints);
-		asrr->session_id = NULL;
-		return errcode;
-        }
-#endif
 
 	asrr->session_id = session_id;
 	asrr->audio_status = MSP_AUDIO_SAMPLE_FIRST;
@@ -306,9 +304,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 			usleep(150*1000); //防止频繁占用CPU
 		}
 
-		printf("result: %s\n", rec_result);
-		if (asrr->notify.on_result)
-			asrr->notify.on_result(rec_result);
+		end_asr_on_success(asrr, rec_result);
 
 		return 0;
 	}
