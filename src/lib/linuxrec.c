@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include "formats.h"
 #include "linuxrec.h"
+#include "debug.h"
 
 #define DBG_ON 1
 
@@ -321,10 +322,13 @@ static void * record_thread_proc(void * para)
 		if (rec->state == RECORD_STATE_CLOSING)
 			break;
 
-		if(rec->state < RECORD_STATE_RECORDING)
+		if(rec->state < RECORD_STATE_RECORDING) {
 			usleep(100000);
+			continue;
+		}
 
 		if (pcm_read(rec, frames) != frames) {
+			hsb_critical("pcm_read fail\n");
 			return NULL;
 		}
 

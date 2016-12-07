@@ -71,6 +71,7 @@ static void end_asr_on_error(struct asr_rec *asrr, int errcode)
 
 static void end_asr_on_success(struct asr_rec *asrr, const char *result)
 {
+#if 0
 	stop_record(asrr->recorder);
 	if (asrr->session_id) {
 		QISRSessionEnd(asrr->session_id, "stop ok");
@@ -79,7 +80,7 @@ static void end_asr_on_success(struct asr_rec *asrr, const char *result)
 	}
 
 	asrr->state = ASR_STATE_INIT;
-
+#endif
 	if (asrr->notify.on_result)
 		asrr->notify.on_result(result);
 }
@@ -104,7 +105,7 @@ static void asr_cb(char *data, unsigned long len, void *user_para)
 
 int asr_init(
 	struct asr_rec *asrr,
-	const char *session_begin_params,
+	const char *ssb_param,
 	struct asr_notifier *notify)
 {
 	int errcode;
@@ -115,14 +116,14 @@ int asr_init(
 		return -E_ASR_NOACTIVEDEVICE;
 	}
 
-	if (!asrr || !session_begin_params)
+	if (!asrr || !ssb_param)
 		return -E_ASR_INVAL;
 
 	ASR_MEMSET(asrr, 0, sizeof(*asrr));
 	asrr->state = ASR_STATE_INIT;
 	asrr->audio_status = MSP_AUDIO_SAMPLE_FIRST;
 
-	snprintf(asrr->session_params, sizeof(asrr->session_params), "%s", session_begin_params);
+	snprintf(asrr->session_params, sizeof(asrr->session_params), "%s", ssb_param);
 
 	asrr->notify = *notify;
 	
@@ -153,23 +154,7 @@ fail:
 	return errcode;
 }
 
-
-int asr_set_grammar(
-	struct asr_rec *asrr,
-        const char *grammar_id)
-{
-	if (strlen(grammar_id) > sizeof(asrr->grammar_id))
-	{
-		hsb_critical("grammar id too long\n");
-		return -1;
-	}
-
-	strcpy(asrr->grammar_id, grammar_id);
-
-	return 0;
-}
-
-int asr_start_listening(struct asr_rec *asrr)
+int asr_start_listening(struct asr_rec *asrr, const char *grammar_id)
 {
 	int ret;
 	const char *session_id = NULL;
@@ -181,7 +166,7 @@ int asr_start_listening(struct asr_rec *asrr)
 		return -E_ASR_ALREADY;
 	}
 
-	session_id = QISRSessionBegin(asrr->grammar_id, asrr->session_params, &errcode);
+	session_id = QISRSessionBegin(grammar_id, asrr->session_params, &errcode);
 	if (MSP_SUCCESS != errcode)
 	{
 		asr_dbg("\nQISRSessionBegin failed! error code:%d\n", errcode);
@@ -271,13 +256,14 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 		char rec_result[256];
 
 		memset(rec_result, 0, sizeof(rec_result));
-
+#if 0
 		ret = QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_stat, &rec_stat);
 
 		if (ret) {
 			printf("QISRAudioWrite failed, err=%d\n", ret);
 			end_asr_on_error(asrr, ret);
 		}
+#endif
 
 		while (MSP_REC_STATUS_COMPLETE != rec_stat) {
 			int errcode, total_len = 0;
@@ -306,6 +292,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 
 		end_asr_on_success(asrr, rec_result);
 
+		asrr->audio_status = MSP_AUDIO_SAMPLE_CONTINUE;
 		return 0;
 	}
 

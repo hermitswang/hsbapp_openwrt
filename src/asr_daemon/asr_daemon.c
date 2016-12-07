@@ -21,8 +21,22 @@
 #define GRAMID_LEN	128
 #define FRAME_LEN	640 
 
+static void on_asr_error(int errcode);
+static void on_asr_result(const char *result);
 
-int get_grammar_id(char* grammar_id, unsigned int id_len)
+static struct asr_rec asrr = { 0 };
+static struct asr_notifier notify = {
+	on_asr_error,
+	on_asr_result,
+};
+
+static bool working = false;
+static const char *ssb_param = "sub = asr, result_type = plain, result_encoding = utf8";
+static const char *login_params = "appid = 57e4884c, work_dir = /tmp/hsb/asr";
+
+static char grammar_id[GRAMID_LEN];
+
+int upload_grammar(const char *file)
 {
 	FILE *fp = NULL;
 	char *grammar = NULL;
@@ -32,36 +46,31 @@ int get_grammar_id(char* grammar_id, unsigned int id_len)
 	unsigned int ret_id_len = 0;
 	int ret = -1;	
 
-	if (NULL == grammar_id)
-		goto grammar_exit;
-
-	fp = fopen("gm_continuous_digit.abnf", "rb");
-	if (NULL == fp)
-	{   
-		printf("\nopen grammar file failed!\n");
+	fp = fopen(file, "rb");
+	if (!fp) {
+		hsb_warning("open grammar file %s failed!\n", file);
 		goto grammar_exit;
 	}
 	
 	fseek(fp, 0, SEEK_END);
-	grammar_len = ftell(fp); //获取语法文件大小 
+	grammar_len = ftell(fp);
 	fseek(fp, 0, SEEK_SET); 
 
 	grammar = (char*)malloc(grammar_len + 1);
-	if (NULL == grammar)
-	{
-		printf("\nout of memory!\n");
+	if (!grammar) {
+		hsb_warning("out of memory!\n");
 		goto grammar_exit;
 	}
 
-	read_len = fread((void *)grammar, 1, grammar_len, fp); //读取语法内容
+	read_len = fread((void *)grammar, 1, grammar_len, fp);
 	if (read_len != grammar_len)
 	{
-		printf("\nread grammar error!\n");
+		hsb_warning("read grammar error!\n");
 		goto grammar_exit;
 	}
 	grammar[grammar_len] = '\0';
 
-	ret_id = MSPUploadData("usergram", grammar, grammar_len, "dtt = abnf, sub = asr", &ret); //上传语法
+	ret_id = MSPUploadData("usergram", grammar, grammar_len, "dtt = abnf, sub = asr", &ret);
 	if (MSP_SUCCESS != ret)
 	{
 		printf("\nMSPUploadData failed, error code: %d.\n", ret);
@@ -69,25 +78,18 @@ int get_grammar_id(char* grammar_id, unsigned int id_len)
 	}
 
 	ret_id_len = strlen(ret_id);
-	if (ret_id_len >= id_len)
-	{
-		printf("\nno enough buffer for grammar_id!\n");
-		goto grammar_exit;
-	}
 	strncpy(grammar_id, ret_id, ret_id_len);
-	printf("grammar_id: \"%s\" \n", grammar_id); //下次可以直接使用该ID，不必重复上传语法。
+	hsb_debug("grammar_id: %s\n", grammar_id);
+
+	ret = 0;
 
 grammar_exit:
-	if (NULL != fp)
-	{
-		fclose(fp);
-		fp = NULL;
-	}
 	if (NULL!= grammar)
-	{
 		free(grammar);
-		grammar = NULL;
-	}
+
+	if (NULL != fp)
+		fclose(fp);
+
 	return ret;
 }
 
@@ -228,6 +230,12 @@ asr_exit:
 static void on_asr_error(int errcode)
 {
 	printf("asr error: %d\n", errcode);
+
+	if (working) {
+		asr_stop_listening(&asrr);
+		asr_uninit(&asrr);
+		working = false;
+	}
 }
 
 static void on_asr_result(const char *result)
@@ -235,28 +243,44 @@ static void on_asr_result(const char *result)
 	printf("asr result: %s\n", result);
 }
 
-static int deal_asr_cmd(daemon_listen_data *dla, struct asr_rec *pasr)
+static int deal_asr_cmd(daemon_listen_data *dla)
 {
+	int ret;
 	char *buf = dla->cmd_buf;
 
-	if (check_cmd_prefix(buf, "start")) {
-		asr_start_listening(pasr);
-	} else if (check_cmd_prefix(buf, "stop")) {
-		asr_stop_listening(pasr);
-	} else if (check_cmd_prefix(buf, "set_grammar=")) {
-		char *grammar = buf + strlen("set_grammar=");
+	if (0 == check_cmd_prefix(buf, "start")) {
+		if (working)
+			return 0;
 
-		int ret;
-		const char *grammar_id;
-
-		grammar_id = MSPUploadData("usergram", grammar, strlen(grammar), "dtt = abnf, sub = asr", &ret);
-		if (MSP_SUCCESS != ret)
-		{
-			printf("\nMSPUploadData failed, error code: %d.\n", ret);
+		ret = asr_init(&asrr, ssb_param, &notify);
+		if (0 != ret) {
+			printf("asr init fail: %d\n", ret);
 			return -1;
 		}
 
-		asr_set_grammar(pasr, grammar_id);
+		ret = asr_start_listening(&asrr, grammar_id);
+		if (0 != ret) {
+			printf("asr_start_listening fail: %d\n", ret);
+			asr_stop_listening(&asrr);
+			asr_uninit(&asrr);
+			return -2;
+		}
+
+		working = true;
+	} else if (0 == check_cmd_prefix(buf, "stop")) {
+		if (!working)
+			return 0;
+
+		asr_stop_listening(&asrr);
+		asr_uninit(&asrr);
+
+		working = false;
+	} else if (0 == check_cmd_prefix(buf, "set_grammar=")) {
+		char *file = buf + strlen("set_grammar=");
+
+		ret = upload_grammar(file);
+		if (ret)
+			hsb_warning("upload grammar fail, ret=%d\n", ret);
 	} else {
 		hsb_warning("asr_daemon get unknown cmd: [%s]\n", buf);
 	}
@@ -267,15 +291,6 @@ static int deal_asr_cmd(daemon_listen_data *dla, struct asr_rec *pasr)
 int main(int argc, char* argv[])
 {
 	int opt, ret;
-	struct asr_rec asrr = { 0 };
-	struct asr_notifier notify = {
-		on_asr_error,
-		on_asr_result,
-	};
-
-	const char* session_begin_params = "sub = asr, result_type = plain, result_encoding = utf8";
-	const char* login_params = "appid = 57e4884c, work_dir = /tmp/hsb/asr";
-
 	gboolean background = FALSE;    
 
 	debug_verbose = DEBUG_DEFAULT_LEVEL;
@@ -305,21 +320,8 @@ int main(int argc, char* argv[])
 		return -2;
 	}
 
-	char grammar_id[128];
-        memset(grammar_id, 0, 128);
-
-#if 1
-        printf("上传语法 ...\n");
-        ret = get_grammar_id(grammar_id, 128);
-        if (MSP_SUCCESS != ret)
-		return -3;
-        printf("上传语法成功\n");
-#endif
-	ret = asr_init(&asrr, session_begin_params, &notify);
-	if (0 != ret) {
-		printf("asr init fail: %d\n", ret);
-		return -3;
-	}
+	/* for test */
+	upload_grammar("gm_continuous_digit.abnf");
 
 	daemon_listen_data dla;
 	while (1) {
@@ -327,14 +329,11 @@ int main(int argc, char* argv[])
 again:
 		daemon_select(hsb_asr_daemon_config.unix_listen_fd, &tv, &dla);
 		if (dla.recv_time != 0) {
-			deal_asr_cmd(&dla, &asrr);
+			deal_asr_cmd(&dla);
 
 			goto again;
 		}
 	}
-
-	asr_stop_listening(&asrr);
-	asr_uninit(&asrr);
 
 	MSPLogout();
 

@@ -17,12 +17,27 @@
 
 #include "ivw.h"
 
+static const char *lgi_param = "appid = 57e4884c,engine_start = ivw,ivw_res_path =fo|res/ivw/wakeupresource.jet, work_dir = /tmp/hsb/ivw";
+static const char *ssb_param = "ivw_threshold=0:-20,sst=wakeup";
+static bool working = false;
+static struct ivw_rec ivwr;
+static struct ivw_notifier notify = {
+	on_ivw_result,
+};
+
 static void on_ivw_result(int errcode)
 {
 	printf("ivw result: %d\n", errcode);
 	// TODO
+
+	if (working) {
+		ivw_stop_listening(&ivwr);
+		ivw_uninit(&ivwr);
+		working = false;
+	}
 }
 
+#if 0
 static int demo_ivw(const char *session_begin_params)
 {
 	int ret;
@@ -59,13 +74,32 @@ ivw_exit:
 
 	return -1;
 }
+#endif
 
-static int deal_awaken_cmd(daemon_listen_data *dla, struct ivw_rec *pivw)
+static int deal_awaken_cmd(daemon_listen_data *dla)
 {
+	int ret;
 	char *buf = dla->cmd_buf;
 
-	if (check_cmd_prefix(buf, "sleep")) {
-		ivw_start_listening(pivw);
+	if (0 == check_cmd_prefix(buf, "sleep")) {
+		if (working)
+			return 0;
+
+		ret = ivw_init(&ivwr, ssb_param, &notify);
+		if (0 != ret) {
+			printf("ivw init fail: %d\n", ret);
+			return -1;
+		}
+
+		ret = ivw_start_listening(&ivwr);
+		if (0 != ret) {
+			printf("ivw start listening fail: %d\n", ret);
+			ivw_stop_listening(&ivwr);
+			ivw_uninit(&ivwr);
+			return -2;
+		}
+
+		working = true;
 	} else {
 		printf("unknown cmd: [%s]\n", buf);
 	}
@@ -76,9 +110,6 @@ static int deal_awaken_cmd(daemon_listen_data *dla, struct ivw_rec *pivw)
 int main(int argc, char *argv[])
 {
 	int opt, ret;
-
-	const char *lgi_param = "appid = 57e4884c,engine_start = ivw,ivw_res_path =fo|res/ivw/wakeupresource.jet, work_dir = /tmp/hsb/ivw";
-	const char *ssb_param = "ivw_threshold=0:-20,sst=wakeup";
 
 	gboolean background = FALSE;    
 
@@ -96,9 +127,9 @@ int main(int argc, char *argv[])
 			break;
 		}
  
-	if (!daemon_init(&hsb_asr_daemon_config, background))
+	if (!daemon_init(&hsb_awaken_daemon_config, background))
 	{
-		hsb_critical("init asr daemon error\n");
+		hsb_critical("init awaken daemon error\n");
 		return -1;
 	}
 
@@ -108,24 +139,13 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	struct ivw_rec ivwr;
-	struct ivw_notifier notify = {
-		on_ivw_result,
-	};
-
-	ret = ivw_init(&ivwr, ssb_param, &notify);
-	if (0 != ret) {
-		printf("ivw init fail: %d\n", ret);
-		return -2;
-	}
-
 	daemon_listen_data dla;
 	while (1) {
 		struct timeval tv = { 1, 0 };
 again:
 		daemon_select(hsb_awaken_daemon_config.unix_listen_fd, &tv, &dla);
 		if (dla.recv_time != 0) {
-			deal_awaken_cmd(&dla, &ivwr);
+			deal_awaken_cmd(&dla);
 
 			goto again;
 		}
