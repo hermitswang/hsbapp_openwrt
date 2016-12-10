@@ -116,7 +116,7 @@ int unix_socket_send_to(int send_socket , const char *to_unix_path,
 	to_addr.sun_family = AF_LOCAL;
 	strcpy (to_addr.sun_path , to_unix_path); 
 	ret = sendto(send_socket , data , send_len ,0, (struct sockaddr *)&to_addr,sizeof(to_addr));
-	if ( sizeof(send_len)  == ret ) {
+	if (ret < send_len) {
 		hsb_critical("%s(%s): %m \n",__FUNCTION__ , to_unix_path);
 	}
 

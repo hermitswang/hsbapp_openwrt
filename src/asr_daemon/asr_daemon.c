@@ -32,7 +32,7 @@ static struct asr_notifier notify = {
 
 static bool working = false;
 static const char *ssb_param = "sub = asr, result_type = plain, result_encoding = utf8";
-static const char *login_params = "appid = 57e4884c, work_dir = /tmp/hsb/asr";
+static const char *login_params = "appid = 57e4884c, work_dir = /tmp/hsb";
 
 static char grammar_id[GRAMID_LEN];
 
@@ -227,6 +227,21 @@ asr_exit:
 
 #endif
 
+static void _stop(void)
+{
+	char *send_str = "stop";
+	int fd = unix_socket_new();
+	if (fd < 0)
+		return;
+
+	char path[MAXPATH];
+	snprintf(path, sizeof(path), LINUX_WORK_DIR"%s", hsb_asr_daemon_config.unix_listen_path);
+
+	unix_socket_send_to(fd , path,
+				send_str , strlen(send_str) );
+	unix_socket_free(fd);
+}
+
 static void on_asr_error(int errcode)
 {
 	printf("asr error: %d\n", errcode);
@@ -241,6 +256,9 @@ static void on_asr_error(int errcode)
 static void on_asr_result(const char *result)
 {
 	printf("asr result: %s\n", result);
+	if (working) {
+		_stop();
+	}
 }
 
 static int deal_asr_cmd(daemon_listen_data *dla)
@@ -267,7 +285,9 @@ static int deal_asr_cmd(daemon_listen_data *dla)
 		}
 
 		working = true;
+                printf("started\n");
 	} else if (0 == check_cmd_prefix(buf, "stop")) {
+		printf("stopping\n");
 		if (!working)
 			return 0;
 
@@ -275,6 +295,7 @@ static int deal_asr_cmd(daemon_listen_data *dla)
 		asr_uninit(&asrr);
 
 		working = false;
+		printf("stopped\n");
 	} else if (0 == check_cmd_prefix(buf, "set_grammar=")) {
 		char *file = buf + strlen("set_grammar=");
 

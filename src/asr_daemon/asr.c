@@ -256,7 +256,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 		char rec_result[256];
 
 		memset(rec_result, 0, sizeof(rec_result));
-#if 0
+#if 1
 		ret = QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_stat, &rec_stat);
 
 		if (ret) {
@@ -292,7 +292,6 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 
 		end_asr_on_success(asrr, rec_result);
 
-		asrr->audio_status = MSP_AUDIO_SAMPLE_CONTINUE;
 		return 0;
 	}
 
