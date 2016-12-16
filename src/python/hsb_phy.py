@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+
+from enum import Enum
+
+class hsb_phy_enum(Enum):
+    ZIGBEE = 'zigbee'
+    WIFI = 'wifi'
+
+class hsb_phy_data:
+    def __init__(self, phy, addr, port, data):
+        self.phy = phy
+        self.addr = addr
+        self.port = port
+        self.data = data
+        if data:
+            self.valid = True
+        else:
+            self.valid = False
+
+    def key(self):
+        return (self.phy, self.port)
+
+class hsb_phy:
+    def __init__(self, manager):
+       self.manager = manager
+
+    def write(self, data):
+        pass
+
+    def on_data_ind(self, data):
+        self.manager.dispatch(data)
+
+    def get_name(self):
+        return self.name
+
+    def exit(self):
+        pass
+
