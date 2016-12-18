@@ -11,19 +11,24 @@ class orange_cmd:
     DISCOVER_RESP = 0x9102
     GET = 0x9111
     SET = 0x9113
-    EVENT = 0x9121
+    UPDATE = 0x9121
     KEEP_ALIVE = 0x9141
     REPLY = 0x9191
 
 class ep_orange(hsb_endpoint):
     def __init__(self, ep, data=0):
         epid = ep & 0xFF
-        datalen = (ep & 0x3F00) >> 8
+        bits = (ep & 0x3F00) >> 8
         readable = (ep & 0x4000) > 0
         writable = (ep & 0x8000) > 0
-        hsb_endpoint.__init__(self, epid, datalen, readable, writable, data)
+        hsb_endpoint.__init__(self, epid, bits, readable, writable, data)
 
-        print('add ep: id=%d, bits=%d' % (self.epid, self.datalen))
+        self.epdata = ep
+
+        print('add ep: id=%d, bits=%d' % (self.epid, self.bits))
+
+    def get_epdata(self):
+        return self.epdata
 
 class dev_orange_type:
     PLUG = 1
@@ -51,7 +56,7 @@ class drv_orange(hsb_driver):
 
         self.data_cb = {}
         self.data_cb[orange_cmd.DISCOVER_RESP] = self.on_discover_resp
-        self.data_cb[orange_cmd.EVENT] = self.on_event
+        self.data_cb[orange_cmd.UPDATE] = self.on_update
         self.data_cb[orange_cmd.KEEP_ALIVE] = self.on_keepalive
         self.data_cb[orange_cmd.REPLY] = self.on_reply
 
@@ -68,23 +73,24 @@ class drv_orange(hsb_driver):
         ep = data[0]
         ep = ep_orange(ep)
 
-        if ep.dsize + 2 > len(buf):
+        if ep.byte_num + 2 > len(buf):
             log('ep data error')
             return (None, buf)
 
-        if ep.dsize == 1:
+        if ep.byte_num == 1:
             ep.data = struct.unpack('B', buf[2:3])
-        elif ep.dsize == 2:
+        elif ep.byte_num == 2:
             ep.data = struct.unpack('H', buf[2:4])
-        elif ep.dsize == 4:
+        elif ep.byte_num == 4:
             ep.data = struct.unpack('I', buf[2:6])
         else:
-            log('ep size error %d' % ep.dsize)
+            log('ep size error %d' % ep.byte_num)
             return (None, buf)
 
-        off = ep.dsize + 2
+        off = ep.byte_num + 2
         buf = buf[off:]
         return (ep, buf)
+
 
     def errcode_convert(self, errcode):
         return errcode
@@ -122,14 +128,16 @@ class drv_orange(hsb_driver):
 
         log('add device %d %s' % (device.devid, device.mac))
 
-    def on_event(self, addr, device, buf):
+    def on_update(self, addr, device, buf):
         eps = []
         while len(buf) > 2:
             ep, buf = self.parse_ep(buf)
             if ep:
-                eps.append(eps)
+                eps.append(ep)
 
-        device.on_update(eps)
+        # device.on_update(eps)
+
+        
 
     def on_keepalive(self, addr, device, buf):
         device.on_keepalive()
@@ -152,7 +160,7 @@ class drv_orange(hsb_driver):
             while len(buf) > 2:
                 ep, buf = self.parse_ep(buf)
                 if ep:
-                    eps.append(eps)
+                    eps.append(ep)
  
             device.on_get_result(ret, eps)
 
@@ -187,6 +195,32 @@ class drv_orange(hsb_driver):
         device = self.find_device(addr)
 
         cb(addr, device, buf[4:])
+
+    def set_eps(self, device, eps):
+
+        data = ''.encode()
+        for ep in eps:
+            epid = ep['epid']
+            if not epid in device.eps:
+                continue
+
+            _ep = device.eps[epid]
+            val = ep['val']
+            data += struct.pack('H', _ep.get_epdata())
+            if _ep.byte_num == 1:
+                data += struct.pack('B', val)
+            elif ep.byte_num == 2:
+                data += struct.pack('H', val)
+            elif ep.byte_num == 4:
+                data += struct.pack('I', val)
+
+        length = len(data) + 4
+
+        _data = struct.pack('2H', orange_cmd.SET, length) + data
+
+        phy_data = hsb_phy_data(self.phy_name, device.addr, self.port, _data, 1)
+
+        self.manager.dispatch(phy_data)
 
 
 

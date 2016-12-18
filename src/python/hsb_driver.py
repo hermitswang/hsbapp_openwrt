@@ -52,6 +52,7 @@ class hsb_driver:
 
         return devices[addr]
 
-
+    def set_eps(self, device, ep):
+        pass
 
 

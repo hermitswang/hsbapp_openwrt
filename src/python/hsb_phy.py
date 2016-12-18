@@ -6,12 +6,17 @@ class hsb_phy_enum(Enum):
     ZIGBEE = 'zigbee'
     WIFI = 'wifi'
 
+class hsb_phy_data_direction:
+    UP = 0
+    DOWN = 1
+
 class hsb_phy_data:
-    def __init__(self, phy, addr, port, data):
+    def __init__(self, phy, addr, port, data, direction=hsb_phy_data_direction.UP):
         self.phy = phy
         self.addr = addr
         self.port = port
         self.data = data
+        self.direction = direction
         if data:
             self.valid = True
         else:

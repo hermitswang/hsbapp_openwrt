@@ -7,6 +7,7 @@ import queue
 import os
 import threading
 
+from hsb_debug import log
 from hsb_manager import hsb_manager
 from hsb_cmd import hsb_cmd, hsb_reply
 from unix_socket import un_new_listen, un_send
@@ -41,7 +42,7 @@ class hsb_network(threading.Thread):
         self.inq.put(cmd)
 
     def parse_cmd(self, cmd):
-        manager.dispatch(cmd)
+        self.manager.dispatch(cmd)
 
     def cmd_proc(self):
         cmdq = self.inq
@@ -78,7 +79,7 @@ class hsb_network(threading.Thread):
             tcp_serv.bind(tcp_serv_addr)
             tcp_serv.listen(5)
         except Exception as e:
-            print(e)
+            log(e)
             sys.exit(0)
 
         udp_serv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -89,7 +90,7 @@ class hsb_network(threading.Thread):
         try:
             udp_serv.bind(udp_serv_addr)
         except Exception as e:
-            print(e)
+            log(e)
             sys.exit(0)
 
         un_sock = un_new_listen(self.un_path)
@@ -110,16 +111,16 @@ class hsb_network(threading.Thread):
                     inputs.append(cli)
 
                     clients[cli] = hsb_client(cli, cliaddr)
-                    print('client %s:%d connected' % cli.getpeername())
+                    log('client %s:%d connected' % cli.getpeername())
                 elif s is udp_serv:
                     data, addr = s.recvfrom(1024)
                     data = data.decode()
                     if data == 'are you hsb?':
-                        print('get udp cmd from %s: %s' % (addr, data))
+                        log('get udp cmd from %s: %s' % (addr, data))
                         reply = 'i am hsb'
                         s.sendto(reply.encode(), addr)
                     else:
-                        print('unknown udp cmd from %s: %s' % (addr, data))
+                        log('unknown udp cmd from %s: %s' % (addr, data))
                 elif s is un_sock:
                     data, addr = s.recvfrom(1024)
 
@@ -144,7 +145,7 @@ class hsb_network(threading.Thread):
                     cli = clients[s]
                     if data:
                         cmd = data.decode()
-                        print('received %s from %s' % (cmd, s.getpeername()))
+                        log('received %s from %s' % (cmd, s.getpeername()))
                         command = hsb_cmd(cli, cmd)
                         self.deal_cmd(command)
 
@@ -153,7 +154,7 @@ class hsb_network(threading.Thread):
                             outputs.remove(s)
 
                         inputs.remove(s)
-                        print('client %s:%d disconnected' % cli.address)
+                        log('client %s:%d disconnected' % cli.address)
                         s.close()
                         del clients[s]
                         cli.valid = False
@@ -167,7 +168,7 @@ class hsb_network(threading.Thread):
                 else:
                     data = reply.data
                     s.send(data.encode())
-                    print('send %s to client %s' % (data, s.getpeername()))
+                    log('send %s to client %s' % (data, s.getpeername()))
 
             for s in exceptional:
                 cli = clients[s]
@@ -175,7 +176,7 @@ class hsb_network(threading.Thread):
                 if s in outputs:
                     outputs.remove(s)
 
-                print('client %s exception' % s.getpeername())
+                log('client %s exception' % s.getpeername())
                 s.close()
                 del clients[s]
                 cli.valid = False
@@ -193,5 +194,5 @@ if __name__ == '__main__':
             network.exit()
             break
         except Exception as e:
-            print(e)
+            log(e)
 

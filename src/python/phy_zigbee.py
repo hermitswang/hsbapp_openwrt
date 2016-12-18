@@ -9,10 +9,24 @@ import serial, queue, threading, select, struct
 class phy_data_zigbee(hsb_phy_data):
     def __init__(self, data):
         self.phy_zigbee_magic = 0x55AA
+        if isinstance(data, hsb_phy_data):
+            direction = 1
+        else:
+            direction = 0
 
-        addr, port, data = self.parse_header(data)
+        if 0 == direction:
+            self.raw_data = data
+            addr, port, data = self.parse_header(data)
+            hsb_phy_data.__init__(self, hsb_phy_enum.ZIGBEE, addr, port, data, direction)
+        else:
+            addr, port, _data = data.addr, data.port, data.data
+            self.raw_data = self.make_header(addr, port, _data)
+            hsb_phy_data.__init__(self, hsb_phy_enum.ZIGBEE, addr, port, _data, direction)
 
-        hsb_phy_data.__init__(self, hsb_phy_enum.ZIGBEE, addr, port, data)
+    def make_header(self, addr, port, data):
+        length = 8 + len(data)
+        _data = struct.pack('4H', self.phy_zigbee_magic, length, addr, port)
+        return _data + data
 
     def parse_header(self, data):
         length = len(data)
@@ -52,7 +66,9 @@ class phy_zigbee(hsb_phy):
         self.work_thread = t
 
     def write(self, data):
-        self.outq.put(data)
+        _data = phy_data_zigbee(data)
+        self.outq.put(_data.raw_data)
+        log(_data.raw_data)
 
     def on_data(self, data):
         phy_data = phy_data_zigbee(data)

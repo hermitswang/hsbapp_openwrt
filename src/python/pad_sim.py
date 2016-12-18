@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-import socket
-import sys
+import sys, socket, json
 
 def probe_hsb():
     addr = ('<broadcast>', 18000)
@@ -17,6 +16,21 @@ def probe_hsb():
     s.close()
 
     return servaddr
+
+def parse_cmd(cmd):
+    words = [ word for word in cmd.split(' ') if len(word) > 0 ]
+    if len(words) == 0:
+        return None
+
+    if words[0] == '1':
+        ob = { 'cmd': 'set', 'devices': [ { 'devid': 1, 'endpoints': [ { 'epid': 0, 'val': 1 } ] } ] }
+
+        content = json.dumps(ob)
+
+        print(content)
+        return content
+
+    return None
 
 if __name__ == '__main__':
 
@@ -40,6 +54,10 @@ if __name__ == '__main__':
             sys.exit(0)
 
         if len(cmd) == 0:
+            continue
+
+        cmd = parse_cmd(cmd)
+        if not cmd:
             continue
 
         try:

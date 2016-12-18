@@ -7,6 +7,7 @@ from hsb_channel import hsb_channel
 from hsb_config import hsb_config
 from hsb_scene import hsb_scene
 from hsb_phy import hsb_phy, hsb_phy_data
+from hsb_cmd import hsb_cmd
 
 class hsb_manager(threading.Thread):
     def __init__(self):
@@ -51,25 +52,26 @@ class hsb_manager(threading.Thread):
                 continue
 
             if isinstance(data, hsb_phy_data):
-                key = data.key()
-                drivers = self.drivers
-                if not key in drivers:
-                    log('key %s not found in drivers' % str(key))
-                    continue
-
-                driver = drivers[key]
-                driver.on_data(data)
-            elif isinstance(data, hsb_cmd):
-                devid = hsb_cmd.devid
-                if 0 == devid:
-                    self.global_cmd(hsb_cmd)
+                if data.direction == 0:
+                    key = data.key()
+                    drivers = self.drivers
+                    if not key in drivers:
+                        log('key %s not found in drivers' % str(key))
+                        continue
+    
+                    driver = drivers[key]
+                    driver.on_data(data)
                 else:
-                    if not devid in devices:
-                        log('device %d not found' % devid)
+                    phys = self.phys
+                    phy_name = data.phy
+                    if not phy_name in phys:
+                        log('phy %s not found in phys' % phy_name)
                         continue
 
-                    device = devices[devid]
-                    device.on_cmd(hsb_cmd)
+                    phy = phys[phy_name]
+                    phy.write(data)
+            elif isinstance(data, hsb_cmd):
+                self.deal_hsb_cmd(data)
             elif isinstance(data, hsb_reply):
                 network.on_reply(data)
             else:
@@ -90,8 +92,30 @@ class hsb_manager(threading.Thread):
             phy = self.phys[key]
             phy.exit()
 
-    def global_cmd(self, cmd):
-        pass
+    def deal_hsb_cmd(self, cmd):
+        devices = self.devices
+        supported_cmds = [ 'set', 'get' ]
+        command = cmd.get('cmd')
+
+        if not command in supported_cmds:
+            log('unsupported cmd: %s' % command)
+            return
+
+        devs = cmd.get('devices')
+        if not devs:
+            log('devices not found')
+            return
+
+        for dev in devs:
+            devid = dev.get('devid', -1)
+            if devid < 0:
+                continue
+
+            device = self.find_device(devid)
+            if not device:
+                continue
+
+            device.on_cmd(command, dev)
 
     def add_phy(self, phy):
         phys = self.phys
