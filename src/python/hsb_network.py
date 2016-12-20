@@ -9,7 +9,7 @@ import threading
 
 from hsb_debug import log
 from hsb_manager import hsb_manager
-from hsb_cmd import hsb_cmd, hsb_reply
+from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
 from unix_socket import un_new_listen, un_send
 
 class hsb_client:
@@ -65,6 +65,11 @@ class hsb_network(threading.Thread):
         self.join()
 
     def on_reply(self, rdata):
+        self.outq.put(rdata)
+
+        un_send(self.un_path, 'notify'.encode())
+
+    def on_event(self, rdata):
         self.outq.put(rdata)
 
         un_send(self.un_path, 'notify'.encode())
@@ -129,13 +134,24 @@ class hsb_network(threading.Thread):
                         if not rdata: # exit
                             return
 
-                        cli = rdata.client
-                        if not cli.valid:
-                            continue
+                        if isinstance(rdata, hsb_reply):
+                            cli = rdata.client
+                            if not cli.valid:
+                                continue
+    
+                            cli.outq.put(rdata)
+                            if not cli.sock in outputs:
+                                outputs.append(cli.sock)
+                        elif isinstance(rdata, hsb_event):
+                            clis = list(clients.values())
+                            for cli in clis:
+                                if not cli.valid:
+                                    continue
 
-                        cli.outq.put(rdata)
-                        if not cli.sock in outputs:
-                            outputs.append(cli.sock)
+                                cli.outq.put(rdata)
+                                if not cli.sock in outputs:
+                                    outputs.append(cli.sock)
+
                 else: # client get data
                     try:
                         data = s.recv(1024)
@@ -166,7 +182,7 @@ class hsb_network(threading.Thread):
                 except queue.Empty:
                     outputs.remove(s)
                 else:
-                    data = reply.data
+                    data = reply.get()
                     s.send(data.encode())
                     log('send %s to client %s' % (data, s.getpeername()))
 

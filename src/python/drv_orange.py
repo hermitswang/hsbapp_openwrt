@@ -25,7 +25,7 @@ class ep_orange(hsb_endpoint):
 
         self.epdata = ep
 
-        print('add ep: id=%d, bits=%d' % (self.epid, self.bits))
+        # print('add ep: id=%d, bits=%d' % (self.epid, self.bits))
 
     def get_epdata(self):
         return self.epdata
@@ -34,19 +34,22 @@ class dev_orange_type:
     PLUG = 1
     REMOTE_CTL = 2
 
-class dev_orange_plug(hsb_device):
+class dev_orange(hsb_device):
     def __init__(self, driver, mac, addr, eps):
-        hsb_device.__init__(self, driver, mac, addr)
+        hsb_device.__init__(self, driver, mac, addr, eps)
+        self.keepalive = True
 
-        for ep in eps:
-            self.add_ep(ep)
-        
-class dev_orange_remote_ctl(hsb_device):
+class dev_orange_plug(dev_orange):
     def __init__(self, driver, mac, addr, eps):
-        hsb_device.__init__(self, driver, mac, addr)
-
         for ep in eps:
-            self.add_ep(ep)
+            if ep.epid == 0:
+                pass # TODO
+
+        dev_orange.__init__(self, driver, mac, addr, eps)
+
+class dev_orange_remote_ctl(dev_orange):
+    def __init__(self, driver, mac, addr, eps):
+        dev_orange.__init__(self, driver, mac, addr, eps)
 
 class drv_orange(hsb_driver):
     def __init__(self, manager):
@@ -78,11 +81,11 @@ class drv_orange(hsb_driver):
             return (None, buf)
 
         if ep.byte_num == 1:
-            ep.data = struct.unpack('B', buf[2:3])
+            ep.val = struct.unpack('B', buf[2:3])
         elif ep.byte_num == 2:
-            ep.data = struct.unpack('H', buf[2:4])
+            ep.val = struct.unpack('H', buf[2:4])
         elif ep.byte_num == 4:
-            ep.data = struct.unpack('I', buf[2:6])
+            ep.val = struct.unpack('I', buf[2:6])
         else:
             log('ep size error %d' % ep.byte_num)
             return (None, buf)
@@ -135,9 +138,7 @@ class drv_orange(hsb_driver):
             if ep:
                 eps.append(ep)
 
-        # device.on_update(eps)
-
-        
+        device.on_update(eps)
 
     def on_keepalive(self, addr, device, buf):
         device.on_keepalive()
@@ -169,13 +170,11 @@ class drv_orange(hsb_driver):
             log('drv_orange get unknown data')
             return
 
-        log('get orange data')
-
         addr = phy_data.addr
         port = phy_data.port
         buf = phy_data.data
 
-        log('addr: %d, port: %d' % (addr, port))
+        # log('addr: %d, port: %d' % (addr, port))
 
         total = len(buf)
 
@@ -186,7 +185,7 @@ class drv_orange(hsb_driver):
         data = struct.unpack('2H', buf[:4])
         cmd, length = data
         
-        log('cmd: %x, len=%d' % (cmd, length))
+        # log('cmd: %x, len=%d' % (cmd, length))
 
         if not cmd in self.data_cb:
             log('unknown cmd 0x%x' % cmd)

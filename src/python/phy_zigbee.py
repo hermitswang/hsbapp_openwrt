@@ -67,8 +67,9 @@ class phy_zigbee(hsb_phy):
 
     def write(self, data):
         _data = phy_data_zigbee(data)
-        self.outq.put(_data.raw_data)
+        # self.outq.put(_data.raw_data) TODO
         log(_data.raw_data)
+        un_send('/tmp/hsb/un_zigbee_test2.listen', _data.raw_data)
 
     def on_data(self, data):
         phy_data = phy_data_zigbee(data)
@@ -130,7 +131,7 @@ class phy_zigbee(hsb_phy):
                         if isinstance(s, serial.Serial):
                             s.write(data)
                         else:
-                            s.sendto(data.encode(), test_path)
+                            s.sendto(data.encode(), '/tmp/hsb/un_zigbee_test2.listen')
 
 
 

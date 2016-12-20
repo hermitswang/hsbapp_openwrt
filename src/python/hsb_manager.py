@@ -7,7 +7,7 @@ from hsb_channel import hsb_channel
 from hsb_config import hsb_config
 from hsb_scene import hsb_scene
 from hsb_phy import hsb_phy, hsb_phy_data
-from hsb_cmd import hsb_cmd
+from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
 
 class hsb_manager(threading.Thread):
     def __init__(self):
@@ -39,8 +39,12 @@ class hsb_manager(threading.Thread):
 
         while not self._exit:
             while not self._exit and dataq.empty():
-                if event.wait():
+                ret = event.wait(1)
+                if ret:
                     event.clear()
+                else:
+                    self.keepalive()
+                    continue
 
             if self._exit:
                 break
@@ -73,7 +77,9 @@ class hsb_manager(threading.Thread):
             elif isinstance(data, hsb_cmd):
                 self.deal_hsb_cmd(data)
             elif isinstance(data, hsb_reply):
-                network.on_reply(data)
+                self.network.on_reply(data)
+            elif isinstance(data, hsb_event):
+                self.network.on_event(data)
             else:
                 log('manager: unknown data')
 
@@ -94,29 +100,39 @@ class hsb_manager(threading.Thread):
 
     def deal_hsb_cmd(self, cmd):
         devices = self.devices
-        supported_cmds = [ 'set', 'get' ]
+        supported_cmds = [ 'get_devices', 'set_devices']
         command = cmd.get('cmd')
 
         if not command in supported_cmds:
-            log('unsupported cmd: %s' % command)
             return
 
-        devs = cmd.get('devices')
-        if not devs:
-            log('devices not found')
-            return
+        if command == 'get_devices':
+            print('%d devices' % len(devices))
+            obs = [ dev.get() for dev in devices.values() ]
 
-        for dev in devs:
-            devid = dev.get('devid', -1)
-            if devid < 0:
-                continue
+            ob = { 'devices': obs }
+            reply = hsb_reply(cmd, ob)
 
-            device = self.find_device(devid)
-            if not device:
-                continue
+            self.dispatch(reply)
 
-            device.on_cmd(command, dev)
+        elif command == 'set_devices':
+            devs = cmd.get('devices')
 
+            if not devs:
+                log('devices not found')
+                return
+
+            for dev in devs:
+                devid = dev.get('devid', -1)
+                if devid < 0:
+                    continue
+    
+                device = self.find_device(devid)
+                if not device:
+                    continue
+    
+                device.on_cmd(command, dev)
+           
     def add_phy(self, phy):
         phys = self.phys
         name = phy.get_name()
@@ -176,6 +192,8 @@ class hsb_manager(threading.Thread):
         devices = self.devices
         devices[devid] = dev
 
+        dev.online()
+
     def del_device(self, dev):
         devices = self.devices
         devid = dev.get_id()
@@ -195,5 +213,10 @@ class hsb_manager(threading.Thread):
         self.dataq.put(data)
         self.data_event.set()
 
-
+    def keepalive(self):
+        devices = [ dev for dev in  self.devices.values() if dev.keepalive ]
+        for dev in devices:
+            dev.add_ticks()
+            if dev.ticks > 10:
+                dev.timeout()
 
