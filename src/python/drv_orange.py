@@ -2,7 +2,7 @@
 
 from hsb_debug import log
 from hsb_driver import hsb_driver
-from hsb_device import hsb_device, hsb_endpoint
+from hsb_device import hsb_device, hsb_endpoint, hsb_dev_type, hsb_ep_type
 from hsb_phy import hsb_phy_enum, hsb_phy_data
 import struct
 
@@ -30,9 +30,9 @@ class ep_orange(hsb_endpoint):
     def get_epdata(self):
         return self.epdata
 
-class dev_orange_type:
-    PLUG = 1
-    REMOTE_CTL = 2
+    def translate(self, codec, data):
+        # TODO
+        return data
 
 class dev_orange(hsb_device):
     def __init__(self, driver, mac, addr, eps):
@@ -42,14 +42,25 @@ class dev_orange(hsb_device):
 class dev_orange_plug(dev_orange):
     def __init__(self, driver, mac, addr, eps):
         for ep in eps:
-            if ep.epid == 0:
-                pass # TODO
+            ep.set_attr('name', 'plug endpoint')
+            ep.add_action('开', 1)
+            ep.add_action('关', 0)
 
         dev_orange.__init__(self, driver, mac, addr, eps)
+        self.set_attr('name', 'plug')
+
+        self.dev_type = hsb_dev_type.PLUG
 
 class dev_orange_remote_ctl(dev_orange):
     def __init__(self, driver, mac, addr, eps):
+        for ep in eps:
+            ep.set_attr('name', 'remotectl endpoint')
+            ep.eptype = hsb_ep_type.REMOTE_CTL
+
         dev_orange.__init__(self, driver, mac, addr, eps)
+        self.set_attr('name', 'remotectl')
+
+        self.dev_type = hsb_dev_type.REMOTE_CTL
 
 class drv_orange(hsb_driver):
     def __init__(self, manager):
@@ -64,9 +75,9 @@ class drv_orange(hsb_driver):
         self.data_cb[orange_cmd.REPLY] = self.on_reply
 
     def new_device(self, dev_type, mac, addr, eps):
-        if dev_type == dev_orange_type.PLUG:
+        if dev_type == hsb_dev_type.PLUG:
             return dev_orange_plug(self, mac, addr, eps)
-        elif dev_type == dev_orange_type.REMOTE_CTL:
+        elif dev_type == hsb_dev_type.REMOTE_CTL:
             return dev_orange_remote_ctl(self, mac, addr, eps)
         else:
             return None
@@ -75,25 +86,27 @@ class drv_orange(hsb_driver):
         data = struct.unpack('H', buf[:2])
         ep = data[0]
         ep = ep_orange(ep)
+        byte_num = ep.byte_num
 
-        if ep.byte_num + 2 > len(buf):
-            log('ep data error')
+        if byte_num + 2 > len(buf):
+            log('ep data error: %d/%d' % (byte_num + 2, len(buf)))
             return (None, buf)
 
-        if ep.byte_num == 1:
-            ep.val = struct.unpack('B', buf[2:3])
-        elif ep.byte_num == 2:
-            ep.val = struct.unpack('H', buf[2:4])
-        elif ep.byte_num == 4:
-            ep.val = struct.unpack('I', buf[2:6])
+        if byte_num == 1:
+            val = struct.unpack('B', buf[2:3])
+        elif byte_num == 2:
+            val = struct.unpack('H', buf[2:4])
+        elif byte_num == 4:
+            val = struct.unpack('I', buf[2:6])
         else:
             log('ep size error %d' % ep.byte_num)
             return (None, buf)
 
-        off = ep.byte_num + 2
+        ep.val = val[0]
+
+        off = byte_num + 2
         buf = buf[off:]
         return (ep, buf)
-
 
     def errcode_convert(self, errcode):
         return errcode
@@ -120,8 +133,10 @@ class drv_orange(hsb_driver):
         while len(buf) > 2:
             ep, buf = self.parse_ep(buf)
 
-            if ep:
-                eps.append(ep)
+            if not ep:
+                return
+
+            eps.append(ep)
 
         device = self.new_device(dev_type, mac, addr, eps)
         if not device:
@@ -208,9 +223,9 @@ class drv_orange(hsb_driver):
             data += struct.pack('H', _ep.get_epdata())
             if _ep.byte_num == 1:
                 data += struct.pack('B', val)
-            elif ep.byte_num == 2:
+            elif _ep.byte_num == 2:
                 data += struct.pack('H', val)
-            elif ep.byte_num == 4:
+            elif _ep.byte_num == 4:
                 data += struct.pack('I', val)
 
         length = len(data) + 4

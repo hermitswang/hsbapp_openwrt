@@ -24,6 +24,16 @@ def parse_data(data):
 
 def parse_cmd(cmd, sock):
     cmd = cmd[:-1]
+
+    if cmd.startswith('raw='):
+        content = cmd[len('raw='):]
+        try:
+            sock.send(content.encode())
+        except Exception:
+            sys.exit(0)
+
+        return
+
     words = [ word for word in cmd.split(' ') if len(word) > 0 ]
     if len(words) == 0:
         return

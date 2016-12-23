@@ -5,6 +5,8 @@ from enum import Enum
 class hsb_phy_enum(Enum):
     ZIGBEE = 'zigbee'
     WIFI = 'wifi'
+    BT = 'bt'
+    IR = 'IR'
 
 class hsb_phy_data_direction:
     UP = 0

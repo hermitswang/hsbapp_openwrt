@@ -3,39 +3,48 @@
 import threading, queue
 
 from hsb_debug import log
-from hsb_channel import hsb_channel
 from hsb_config import hsb_config
 from hsb_scene import hsb_scene
 from hsb_phy import hsb_phy, hsb_phy_data
 from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
+from hsb_audio import hsb_audio
+from hsb_scene import hsb_scene
+from hsb_device import hsb_ep_type, hsb_dev_type
+from dev_ir import dev_ir
 
 class hsb_manager(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
-        self.channel = hsb_channel()
         self.config = hsb_config()
-        self.scene = hsb_scene()
-        # self.zigbee = hsb_zigbee()
         self._exit = False
         self.exit_event = threading.Event()
         self.phys = {}
         self.drivers = {}
-        self.first_dev_id = 1
+        self.first_devid = 1
         self.devices = {}
 
         self.dataq = queue.Queue()
         self.data_event = threading.Event()
 
         self.network = None
+        self.audio = None
+        self.scenes = {}
 
     def set_network(self, network):
         self.network = network
+
+    def set_audio(self, audio):
+        self.audio = audio
 
     def run(self):
         self._exit = False
         event = self.data_event
         dataq = self.dataq
         devices = self.devices
+
+        self.load_config()
+        self.first_devid = self.config.get_max_devid()
+        log('first devid: %d' % self.first_devid)
 
         while not self._exit:
             while not self._exit and dataq.empty():
@@ -100,7 +109,7 @@ class hsb_manager(threading.Thread):
 
     def deal_hsb_cmd(self, cmd):
         devices = self.devices
-        supported_cmds = [ 'get_devices', 'set_devices']
+        supported_cmds = [ 'get_devices', 'set_devices', 'get_scenes', 'set_scenes', 'del_scene', 'enter_scene', 'add_ir_devices', 'del_ir_devices', 'get_asrkey' ]
         command = cmd.get('cmd')
 
         if not command in supported_cmds:
@@ -108,7 +117,7 @@ class hsb_manager(threading.Thread):
 
         if command == 'get_devices':
             print('%d devices' % len(devices))
-            obs = [ dev.get() for dev in devices.values() ]
+            obs = [ dev.get_ob() for dev in devices.values() ]
 
             ob = { 'devices': obs }
             reply = hsb_reply(cmd, ob)
@@ -132,7 +141,52 @@ class hsb_manager(threading.Thread):
                     continue
     
                 device.on_cmd(command, dev)
-           
+        elif command == 'get_asrkey':
+            asrkey = self.get_asrkey()
+            log('asrkey: %s' % asrkey)
+        elif command == 'get_scenes':
+            obs = [ s.get_ob() for s in self.scenes.values() ]
+            ob = { 'scenes': obs }
+            reply = hsb_reply(cmd, ob)
+
+            self.dispatch(reply)
+
+        elif command == 'set_scenes':
+            scenes = cmd.get('scenes')
+            if not scenes:
+                return
+
+            for s in scenes:
+                scene = hsb_scene(s)
+                if not scene.valid:
+                    log('scene not valid')
+                    continue
+
+                self.add_scene(scene)
+
+            self.config.save_scenes(self.scenes)
+        elif command == 'del_scene':
+            name = cmd.get('name')
+            self.del_scene(name)
+
+            self.config.save_scenes(self.scenes)
+        elif command == 'enter_scene':
+            name = cmd.get('name')
+            self.enter_scene(name)
+        elif command == 'add_ir_devices':
+            ob = cmd.get('devices')
+            if not ob:
+                return
+
+            self.add_ir_devices(ob)
+
+        elif command == 'del_ir_devices':
+            ob = cmd.get('devices')
+            if not ob:
+                return
+
+            self.del_ir_devices(ob)
+
     def add_phy(self, phy):
         phys = self.phys
         name = phy.get_name()
@@ -151,6 +205,51 @@ class hsb_manager(threading.Thread):
             return
 
         del phys[name]
+
+    def add_ir_devices(self, ob):
+        for dev in ob:
+            if not 'attrs' in dev:
+                log('unknown ir device: %s' % dev)
+                continue
+
+            attrs = dev['attrs']
+
+            if not 'irtype' in attrs:
+                log('unknown ir device: %s' % dev)
+                continue
+
+            irtype = attrs['irtype']
+            device = dev_ir.new_device(irtype)
+            if not device:
+                continue
+
+            device.set_ob(dev)
+            self.add_device(device)
+
+    def del_ir_devices(self, ob):
+        for dev in ob:
+            if not 'devid' in dev:
+                log('unknown ir device: %d' % dev)
+                continue
+
+            devid = dev['devid']
+            device = self.find_device(devid)
+            if device:
+                self.del_device(device)
+                self.config.del_device(device)
+
+    def find_dummy(self, dev):
+        for dev in self.devices.values():
+            if dev.get_attr('location') != dev.get_attr('location'):
+                continue
+
+            eps = dev.find_eps_by_type(hsb_ep_type.REMOTE_CTL)
+            if len(eps) == 0:
+                continue
+
+            return (dev, eps[0])
+
+        return (None, None)
 
     def add_driver(self, drv):
         drvs = self.drivers
@@ -180,17 +279,71 @@ class hsb_manager(threading.Thread):
 
         del drvs[key]
 
+    def load_config(self):
+        config = self.config
+        devs = config.devices
+        for dev in devs.values():
+            if not ('devtype' in dev and 'devid' in dev):
+                continue
+
+            devid = dev['devid']
+            devtype = dev['devtype']
+            if devtype != hsb_dev_type.IR:
+                continue
+
+            if not 'attrs' in dev:
+                continue
+
+            attrs = dev['attrs']
+            if not 'irtype' in attrs:
+                continue
+
+            irtype = attrs['irtype']
+
+            device = dev_ir.new_device(irtype)
+            if not device:
+                continue
+
+            device.devid = devid
+            device.set_ob(dev)
+            device.manager = self
+            self.devices[devid] = device
+
+            device.online()
+
+        scenes = config.scenes
+        for s in scenes.values():
+            scene = hsb_scene(s)
+            if not scene.valid:
+                log('scene not valid')
+                continue
+
+            self.add_scene(scene)
+
     def alloc_dev_id(self):
-        devid = self.first_dev_id
-        self.first_dev_id = devid + 1
+        devid = self.first_devid
+        self.first_devid = devid + 1
         return devid
 
     def add_device(self, dev):
-        devid = self.alloc_dev_id()
+        ob = None
+        if len(dev.smac) > 0:
+            ob = self.config.find_device_by_smac(dev.smac)
+
+        if ob:
+            devid = ob['devid']
+            dev.set_ob(ob)
+        else:
+            devid = self.alloc_dev_id()
+
         dev.set_id(devid)
 
         devices = self.devices
+        dev.manager = self
         devices[devid] = dev
+
+        if not ob:
+            self.config.save_devices(self.devices)
 
         dev.online()
 
@@ -198,8 +351,9 @@ class hsb_manager(threading.Thread):
         devices = self.devices
         devid = dev.get_id()
         if not devid in devices:
-            log('device %d not found' % devidi)
+            log('device %d not found' % devid)
 
+        dev.offline()
         del devices[devid]
 
     def find_device(self, devid):
@@ -208,6 +362,63 @@ class hsb_manager(threading.Thread):
             return None
 
         return devices[devid]
+
+    def add_scene(self, scene):
+        name = scene.name
+        if len(name) == 0:
+            log('scene name null')
+            return
+
+        self.scenes[name] = scene
+
+    def del_scene(self, name):
+        if not name in self.scenes:
+            log('scene %s not exists' % name)
+            return
+
+        del self.scenes[name]
+
+    def enter_scene(self, name):
+        if not name in self.scenes:
+            log('scene %s not exists' % name)
+            return
+
+        scene = self.scenes[name]
+
+        for act in scene.actions:
+            cond = act.condition
+            if cond:
+                device = self.find_device(cond.devid)
+                if not device:
+                    continue
+
+                ep = device.get_ep(cond.epid)
+                if not ep:
+                    continue
+
+                result = cond.check(ep.val)
+                if not result:
+                    continue
+
+            device = self.find_device(act.devid)
+            if not device:
+                continue
+
+            ep = device.get_ep(act.epid)
+            if not ep:
+                continue
+
+            eps = [{ 'epid': act.epid, 'val': act.val }]
+
+            if act.delay > 0:
+                def _callback(device, eps):
+                    device.set_endpoints(eps)
+
+                t = threading.Timer(act.delay, _callback, (device, eps))
+                t.start()
+            else:
+                device.set_endpoints(eps)
+
 
     def dispatch(self, data):
         self.dataq.put(data)
@@ -218,5 +429,36 @@ class hsb_manager(threading.Thread):
         for dev in devices:
             dev.add_ticks()
             if dev.ticks > 10:
-                dev.timeout()
+                dev.offline()
+
+    def get_asrkey(self):
+        keys = []
+
+        for dev in self.devices.values():
+            key = dev.get_asrkey()
+            if not key:
+                continue
+
+            keys.append(key)
+
+        names = [ s for s in self.scenes.keys() ]
+        if len(names) > 0:
+            if len(names) > 1:
+                key = '(%s)' % '|'.join(names)
+            else:
+                key = names
+
+            act = '(进入 {act} %s {scene})' % key
+            keys.append(act)
+
+        if len(keys) > 0:
+            asrkey = '|'.join(keys)
+        else:
+            asrkey = None
+
+        return asrkey
+
+
+
+
 
