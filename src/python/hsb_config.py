@@ -5,9 +5,10 @@ import json
 from hsb_device import mac_to_smac
 
 class hsb_config:
-    def __init__(self):
-        devices = self.load('devices.json')
-        scenes = self.load('scenes.json')
+    def __init__(self, workdir='.'):
+        self.workdir = workdir
+        devices = self.load(workdir + '/devices.json')
+        scenes = self.load(workdir + '/scenes.json')
 
         if devices:
             self.devices = devices
@@ -23,7 +24,7 @@ class hsb_config:
         try:
             cfg = open(path, 'r')
         except Exception as e:
-            log(e)
+            # log(e)
             return
 
         try:

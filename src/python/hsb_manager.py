@@ -3,11 +3,11 @@
 import threading, queue
 
 from hsb_debug import log
-from hsb_config import hsb_config
+# from hsb_config import hsb_config
+# from hsb_audio import hsb_audio
 from hsb_scene import hsb_scene
 from hsb_phy import hsb_phy, hsb_phy_data
 from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
-from hsb_audio import hsb_audio
 from hsb_scene import hsb_scene
 from hsb_device import hsb_ep_type, hsb_dev_type
 from dev_ir import dev_ir
@@ -15,7 +15,6 @@ from dev_ir import dev_ir
 class hsb_manager(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
-        self.config = hsb_config()
         self._exit = False
         self.exit_event = threading.Event()
         self.phys = {}
@@ -35,6 +34,9 @@ class hsb_manager(threading.Thread):
 
     def set_audio(self, audio):
         self.audio = audio
+
+    def set_config(self, config):
+        self.config = config
 
     def run(self):
         self._exit = False
@@ -165,9 +167,17 @@ class hsb_manager(threading.Thread):
                 self.add_scene(scene)
 
             self.config.save_scenes(self.scenes)
-        elif command == 'del_scene':
-            name = cmd.get('name')
-            self.del_scene(name)
+        elif command == 'del_scenes':
+            scenes = cmd.get('scenes')
+            if not scenes:
+                return
+
+            for s in scenes:
+                if not 'name' in s:
+                    continue
+
+                name = s['name']
+                self.del_scene(name)
 
             self.config.save_scenes(self.scenes)
         elif command == 'enter_scene':

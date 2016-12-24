@@ -4,6 +4,7 @@ from hsb_debug import log, log_init
 from hsb_network import hsb_network
 from hsb_manager import hsb_manager
 from hsb_audio import hsb_audio
+from hsb_config import hsb_config
 
 from drv_orange import drv_orange
 from phy_zigbee import phy_zigbee
@@ -14,6 +15,9 @@ if __name__ == '__main__':
     log_init()
 
     manager = hsb_manager()
+
+    config = hsb_config(workdir='/tmp/hsb')
+    manager.set_config(config)
 
     zigbee = phy_zigbee(manager)
     manager.add_phy(zigbee)
