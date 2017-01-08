@@ -21,26 +21,42 @@ class hsb_dev_state:
     HSB_DEV_STATE_OFFLINE = 2
 
 class hsb_dev_type:
-    PLUG = 1
-    REMOTE_CTL = 2
-    IR = 3
+    PLUG = 'plug'
+    SENSOR = 'sensor'
+    REMOTE_CTL = 'remotectl'
+    IR = 'ir'
 
 class hsb_ep_type:
-    NORMAL = 1
-    REMOTE_CTL = 2
+    NORMAL = 'normal'
+    REMOTE_CTL = 'remotectl'
+
+class hsb_ep_val_type:
+    INT = "int"
+    LIST = "list"
 
 class hsb_endpoint:
-    def __init__(self, epid, bits, readable, writable, val=0, eptype=hsb_ep_type.NORMAL):
-        self.bits = bits
+    def __init__(self, epid, readable, writable, val=0, eptype=hsb_ep_type.NORMAL):
         self.readable = readable
         self.writable = writable
         self.epid = epid
         self.val = val
-        self.byte_num = int((bits + 7) / 8)
 
         self.attrs = {}
         self.actions = {}
         self.eptype = eptype
+
+        self.valtype = hsb_ep_val_type.LIST
+        self.values = []
+
+    def set_val_range(self, minimum, maximum, unit=''):
+        self.valtype = hsb_ep_val_type.INT
+        self.minimum = minimum
+        self.maximum = maximum
+        self.unit = unit
+
+    def add_val(self, val, desc):
+        value = { 'val': val, 'desc': desc }
+        self.values.append(value)
 
     def add_action(self, name, val):
         self.actions[name] = val
@@ -70,12 +86,20 @@ class hsb_endpoint:
         return self.name
 
     def get_ob(self):
-        ob = { 'epid': self.epid, 'bits': self.bits, 'readable': self.readable, 'writable': self.writable }
+        ob = { 'epid': self.epid, 'readable': self.readable, 'writable': self.writable, 'valtype': self.valtype }
         if self.readable:
             ob['val'] = self.val
 
         if len(self.attrs) > 0:
             ob['attrs'] = self.attrs
+
+        if self.valtype == hsb_ep_val_type.LIST:
+            if len(self.values) > 0:
+                ob['values'] = self.values
+        elif self.valtype == hsb_ep_val_type.INT:
+            ob['min'] = self.minimum
+            ob['max'] = self.maximum
+            ob['unit'] = self.unit
 
         return ob
 
@@ -196,12 +220,13 @@ class hsb_device:
     def on_update(self, eps):
         log('ep event')
 
-        endpoints = []
-        for ep in eps:
-            endpoints.append({ 'epid': ep.epid, 'val': ep.val })
+        endpoints = [ { 'epid': ep.epid, 'val': ep.val } for ep in eps ]
+
         ob = { 'devid': self.devid, 'endpoints': endpoints }
 
-        event = hsb_event('update', ob)
+        obs = { 'devices': [ ob ] }
+
+        event = hsb_event(hsb_event.DEVS_UPDATED, ob)
         self.upload(event)     
 
     def on_cmd(self, cmd, ob):
@@ -269,22 +294,40 @@ class hsb_device:
             self.driver.set_eps(self, eps)
 
     def offline(self):
-        if self.driver:
-            self.driver.del_device(self)
+        ob = { 'devices': [ { 'devid': self.devid } ] }
 
-        ob = { 'devid': self.devid}
-
-        event = hsb_event('offline', ob)
+        event = hsb_event(hsb_event.DEVS_OFFLINE, ob)
         self.upload(event)     
 
     def online(self):
         ob = self.get_ob()
 
-        event = hsb_event('online', ob)
+        obs = { 'devices': [ ob ] }
+
+        event = hsb_event(hsb_event.DEVS_ONLINE, obs)
         self.upload(event)
 
     def find_eps_by_type(self, eptype):
         return [ ep for ep in self.eps.values() if ep.eptype == eptype ]
+
+class hsb_dev_action:
+    def __init__(self, act):
+        self.set_ob(act)
+
+    def set_ob(self, act):
+        self.valid = False
+        if not ('devid' in act and 'epid' in act and 'val' in act):
+            return
+
+        self.devid = act['devid']
+        self.epid = act['epid']
+        self.val = act['val']
+
+        self.valid = True
+
+    def get_ob(self):
+        ob = { 'devid': self.devid, 'epid': self.epid, 'val': self.val }
+        return ob
 
 
 

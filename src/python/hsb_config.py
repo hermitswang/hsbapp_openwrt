@@ -51,7 +51,7 @@ class hsb_config:
             return
 
         try:
-            data = json.dumps(ob)
+            data = json.dumps(ob, ensure_ascii=False)
         except Exception as e:
             log(e)
             cfg.close()

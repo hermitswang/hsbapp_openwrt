@@ -61,7 +61,7 @@ def parse_data(data):
 
 def send_discover_resp():
     ep = eps[0]
-    data = struct.pack('6HI8sHB', magic, 27, addr, port, orange_cmd.DISCOVER_RESP, 19, 1, b'\x01\x02\x03\x04\x05\x06\x07\x08', 0xC100, ep['val'])
+    data = struct.pack('6HI8sHB', magic, 27, addr, port, orange_cmd.DISCOVER_RESP, 19, 0, b'\x01\x02\x03\x04\x05\x06\x07\x08', 0xC100, ep['val'])
 
     un_send('/tmp/hsb/un_zigbee_test.listen', data)
 

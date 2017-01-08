@@ -40,6 +40,7 @@ class hsb_driver:
         addr = dev.addr
         if not addr in devices:
             log('dev %s not exists' % addr)
+            return
 
         del devices[addr]
 
@@ -51,6 +52,9 @@ class hsb_driver:
             return None
 
         return devices[addr]
+
+    def timeout(self, dev):
+        self.del_device(dev)
 
     def set_eps(self, device, ep):
         pass

@@ -6,7 +6,7 @@ from hsb_device import hsb_device, hsb_endpoint, hsb_dev_type
 
 class ep_ir(hsb_endpoint):
     def __init__(self, epid):
-        hsb_endpoint.__init__(self, epid, 32, False, True, 0)
+        hsb_endpoint.__init__(self, epid, False, True, 0)
 
 class dev_ir_type:
     TV = 'tv'

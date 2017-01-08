@@ -19,9 +19,14 @@ class ep_orange(hsb_endpoint):
     def __init__(self, ep, data=0):
         epid = ep & 0xFF
         bits = (ep & 0x3F00) >> 8
+        byte_num = int((bits + 7) / 8)
         readable = (ep & 0x4000) > 0
         writable = (ep & 0x8000) > 0
-        hsb_endpoint.__init__(self, epid, bits, readable, writable, data)
+
+        self.bits = bits
+        self.byte_num = byte_num
+
+        hsb_endpoint.__init__(self, epid, readable, writable, data)
 
         self.epdata = ep
 
@@ -45,6 +50,8 @@ class dev_orange_plug(dev_orange):
             ep.set_attr('name', 'plug endpoint')
             ep.add_action('开', 1)
             ep.add_action('关', 0)
+            ep.add_val(0, '关')
+            ep.add_val(1, '开')
 
         dev_orange.__init__(self, driver, mac, addr, eps)
         self.set_attr('name', 'plug')
@@ -62,6 +69,11 @@ class dev_orange_remote_ctl(dev_orange):
 
         self.dev_type = hsb_dev_type.REMOTE_CTL
 
+class orange_dev_type:
+    PLUG = 0
+    SENSOR = 1
+    REMOTECTL = 2
+
 class drv_orange(hsb_driver):
     def __init__(self, manager):
         hsb_driver.__init__(self, manager)
@@ -75,9 +87,9 @@ class drv_orange(hsb_driver):
         self.data_cb[orange_cmd.REPLY] = self.on_reply
 
     def new_device(self, dev_type, mac, addr, eps):
-        if dev_type == hsb_dev_type.PLUG:
+        if dev_type == orange_dev_type.PLUG:
             return dev_orange_plug(self, mac, addr, eps)
-        elif dev_type == hsb_dev_type.REMOTE_CTL:
+        elif dev_type == orange_dev_type.REMOTECTL:
             return dev_orange_remote_ctl(self, mac, addr, eps)
         else:
             return None
@@ -141,6 +153,7 @@ class drv_orange(hsb_driver):
         device = self.new_device(dev_type, mac, addr, eps)
         if not device:
             log('unknown dev_type %d' % dev_type)
+            return
  
         self.add_device(device)
 

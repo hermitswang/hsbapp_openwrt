@@ -163,7 +163,8 @@ class hsb_network(threading.Thread):
                         cmd = data.decode()
                         log('received %s from %s' % (cmd, s.getpeername()))
                         command = hsb_cmd(cli, cmd)
-                        self.deal_cmd(command)
+                        if command.valid:
+                            self.deal_cmd(command)
 
                     else:
                         if s in outputs:

@@ -35,6 +35,9 @@ class hsb_manager(threading.Thread):
     def set_audio(self, audio):
         self.audio = audio
 
+    def set_timer(self, timer):
+        self.timer = timer
+
     def set_config(self, config):
         self.config = config
 
@@ -55,6 +58,7 @@ class hsb_manager(threading.Thread):
                     event.clear()
                 else:
                     self.keepalive()
+                    self.timer.check()
                     continue
 
             if self._exit:
@@ -111,14 +115,14 @@ class hsb_manager(threading.Thread):
 
     def deal_hsb_cmd(self, cmd):
         devices = self.devices
-        supported_cmds = [ 'get_devices', 'set_devices', 'get_scenes', 'set_scenes', 'del_scene', 'enter_scene', 'add_ir_devices', 'del_ir_devices', 'get_asrkey' ]
+        supported_cmds = [ 'get_devices', 'set_devices', 'get_scenes', 'set_scenes', 'del_scenes', 'enter_scene', 'add_devices', 'del_devices', 'set_timers','get_timers', 'del_timers', 'get_asrkey' ]
         command = cmd.get('cmd')
 
         if not command in supported_cmds:
             return
 
         if command == 'get_devices':
-            print('%d devices' % len(devices))
+            log('%d devices' % len(devices))
             obs = [ dev.get_ob() for dev in devices.values() ]
 
             ob = { 'devices': obs }
@@ -159,7 +163,7 @@ class hsb_manager(threading.Thread):
                 return
 
             for s in scenes:
-                scene = hsb_scene(s)
+                scene = hsb_scene(self, s)
                 if not scene.valid:
                     log('scene not valid')
                     continue
@@ -183,19 +187,36 @@ class hsb_manager(threading.Thread):
         elif command == 'enter_scene':
             name = cmd.get('name')
             self.enter_scene(name)
-        elif command == 'add_ir_devices':
+        elif command == 'add_devices':
             ob = cmd.get('devices')
             if not ob:
                 return
 
             self.add_ir_devices(ob)
 
-        elif command == 'del_ir_devices':
+        elif command == 'del_devices':
             ob = cmd.get('devices')
             if not ob:
                 return
 
             self.del_ir_devices(ob)
+        elif command == 'set_timers':
+            ob = cmd.get('timers')
+            if not ob:
+                return
+
+            self.timer.set_timers(ob)
+        elif command == 'del_timers':
+            ob = cmd.get('timers')
+            if not ob:
+                return
+
+            self.timer.del_timers(ob)
+        elif command == 'get_timers':
+            ob = { 'timers': self.timer.get_ob() }
+            reply = hsb_reply(cmd, ob)
+
+            self.dispatch(reply)
 
     def add_phy(self, phy):
         phys = self.phys
@@ -323,7 +344,7 @@ class hsb_manager(threading.Thread):
 
         scenes = config.scenes
         for s in scenes.values():
-            scene = hsb_scene(s)
+            scene = hsb_scene(self, s)
             if not scene.valid:
                 log('scene not valid')
                 continue
@@ -363,8 +384,9 @@ class hsb_manager(threading.Thread):
         if not devid in devices:
             log('device %d not found' % devid)
 
-        dev.offline()
         del devices[devid]
+
+        dev.offline()
 
     def find_device(self, devid):
         devices = self.devices
@@ -394,41 +416,7 @@ class hsb_manager(threading.Thread):
             return
 
         scene = self.scenes[name]
-
-        for act in scene.actions:
-            cond = act.condition
-            if cond:
-                device = self.find_device(cond.devid)
-                if not device:
-                    continue
-
-                ep = device.get_ep(cond.epid)
-                if not ep:
-                    continue
-
-                result = cond.check(ep.val)
-                if not result:
-                    continue
-
-            device = self.find_device(act.devid)
-            if not device:
-                continue
-
-            ep = device.get_ep(act.epid)
-            if not ep:
-                continue
-
-            eps = [{ 'epid': act.epid, 'val': act.val }]
-
-            if act.delay > 0:
-                def _callback(device, eps):
-                    device.set_endpoints(eps)
-
-                t = threading.Timer(act.delay, _callback, (device, eps))
-                t.start()
-            else:
-                device.set_endpoints(eps)
-
+        scene.enter()
 
     def dispatch(self, data):
         self.dataq.put(data)
@@ -439,7 +427,29 @@ class hsb_manager(threading.Thread):
         for dev in devices:
             dev.add_ticks()
             if dev.ticks > 10:
+                drv = dev.driver
+                if drv:
+                    drv.timeout(dev)
+
                 dev.offline()
+
+    def do_actions(self, actions):
+        dev_acts = {}
+        for act in actions:
+            devid = act.devid
+            if not devid in dev_acts:
+                dev_acts[devid] = [ act ]
+            else:
+                dev_acts[devid].append(act)
+
+        for devid in dev_acts:
+            device = self.find_device(devid)
+            if not device:
+                continue
+
+            eps = [ act.get_ob() for act in dev_acts[devid] ]
+
+            device.set_endpoints(eps)
 
     def get_asrkey(self):
         keys = []

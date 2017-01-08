@@ -54,7 +54,7 @@ def parse_cmd(cmd, sock):
         print('unknown cmd: %s' % words)
         return
 
-    content = json.dumps(ob)
+    content = json.dumps(ob, ensure_ascii=False)
     print(content)
 
     try:
