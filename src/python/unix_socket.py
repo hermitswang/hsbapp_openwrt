@@ -22,6 +22,11 @@ def un_new_listen(path):
 
 def un_send(path, data):
     s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    s.sendto(data, path)
+    try:
+        s.sendto(data, path)
+    except Exception:
+        return False
+
+    return True
 
 

@@ -14,12 +14,14 @@ class hsb_audio(threading.Thread):
         self.manager = manager
         self.state = hsb_audio.IDLE
 
-    def start_asr(self):
+    def start_asr(self, grammar):
         if not self.state == hsb_audio.IDLE:
             log('audio state not IDLE')
             return
 
-        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'start')
+        self.set_grammar(grammar)
+
+        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'start'.encode())
         self.state = hsb_audio.ASR
 
     def set_grammar(self, grammar):
@@ -31,14 +33,14 @@ class hsb_audio(threading.Thread):
         f.write(grammar)
         f.close()
 
-        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'set_grammar=/tmp/hsb/grammar')
+        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'set_grammar=/tmp/hsb/grammar'.encode())
 
     def stop_asr(self):
         if not self.state == ASR:
             log('audio state not ASR')
             return
 
-        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'stop')
+        un_send('/tmp/hsb/hsb_asr_daemon.listen', 'stop'.encode())
         self.state = hsb_audio.IDLE
 
     def start_awaken(self):
@@ -46,7 +48,7 @@ class hsb_audio(threading.Thread):
             log('audio state not IDLE')
             return
 
-        un_send('/tmp/hsb/hsb_awaken_daemon.listen', 'start')
+        un_send('/tmp/hsb/hsb_awaken_daemon.listen', 'start'.encode())
         self.state = hsb_audio.AWAKEN
 
     def stop_awaken(self):
@@ -54,11 +56,11 @@ class hsb_audio(threading.Thread):
             log('audio state not AWAKEN')
             return
 
-        un_send('/tmp/hsb/hsb_awaken_daemon.listen', 'stop')
+        un_send('/tmp/hsb/hsb_awaken_daemon.listen', 'stop'.encode())
         self.state = hsb_audio.IDLE
 
     def on_awaken(self):
-        self.start_asr()
+        manager.on_awaken()
 
     def on_asr_result(self, result):
         log('asr result: %s' % result)
@@ -70,20 +72,28 @@ class hsb_audio(threading.Thread):
         elif result.startswith('asr_result='):
             self.on_asr_result(result[len('asr_result='):])
 
+    def exit(self):
+        self._exit = True
+
+        un_send('/tmp/hsb/hsb_audio.listen', 'exit'.encode())
+        self.join()
+
     def run(self):
         self.listen = un_new_listen('/tmp/hsb/hsb_audio.listen')
-        self.exit = False
+        self._exit = False
 
         if not self.listen:
             return
 
+        self.start_awaken()
+
         inputs = [ self.listen ]
         outputs = []
 
-        while not self.exit:
+        while not self._exit:
             readable, writable, exceptional = select.select(inputs, outputs, inputs)
 
-            if self.exit:
+            if self._exit:
                 break
 
             for s in readable:
@@ -91,5 +101,6 @@ class hsb_audio(threading.Thread):
                     data, addr = s.recvfrom(1024)
                     data = data.decode()
 
+                    log('get msg: %s' % data)
                     self.on_result(data)
 

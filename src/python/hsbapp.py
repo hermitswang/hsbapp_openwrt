@@ -55,6 +55,7 @@ if __name__ == '__main__':
         print(e)
     finally:
         network.exit()
+        audio.exit()
         manager.exit()
 
 

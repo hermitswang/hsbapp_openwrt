@@ -478,7 +478,11 @@ class hsb_manager(threading.Thread):
 
         return asrkey
 
-    def on_asr_result(result):
+    def on_awaken(self):
+        asrkey = self.get_asrkey()
+        self.audio.start_asr(asrkey)
+
+    def on_asr_result(self, result):
         pass
 
 

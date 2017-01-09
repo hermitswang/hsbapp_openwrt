@@ -33,6 +33,7 @@ class hsb_ep_type:
 class hsb_ep_val_type:
     INT = "int"
     LIST = "list"
+    BOOL = "bool"
 
 class hsb_endpoint:
     def __init__(self, epid, readable, writable, val=0, eptype=hsb_ep_type.NORMAL):
@@ -45,7 +46,7 @@ class hsb_endpoint:
         self.actions = {}
         self.eptype = eptype
 
-        self.valtype = hsb_ep_val_type.LIST
+        self.valtype = hsb_ep_val_type.BOOL
         self.values = []
 
     def set_val_range(self, minimum, maximum, unit=''):
@@ -93,7 +94,7 @@ class hsb_endpoint:
         if len(self.attrs) > 0:
             ob['attrs'] = self.attrs
 
-        if self.valtype == hsb_ep_val_type.LIST:
+        if self.valtype in [ hsb_ep_val_type.BOOL, hsb_ep_val_type.LIST ]:
             if len(self.values) > 0:
                 ob['values'] = self.values
         elif self.valtype == hsb_ep_val_type.INT:
