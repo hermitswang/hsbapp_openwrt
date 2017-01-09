@@ -28,6 +28,7 @@ if __name__ == '__main__':
 
     audio = hsb_audio(manager)
     manager.set_audio(audio)
+    audio.start()
 
     timer = hsb_timer(manager)
     manager.set_timer(timer)

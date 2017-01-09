@@ -12,16 +12,13 @@
 
 #define SYSLOG_DIR	"/var/log/"
 #define PID_DIR	"/var/run/"
-#define LINUX_WORK_DIR "/tmp/hsb/"
-#define ANDROID_WORK_DIR "/dev/hsb/"
+#define WORK_DIR "/tmp/hsb/"
 #define EXECUTE_PATH  "/opt/bin/"
 
-#define LINUX_CONFIG_DIR	""
-#define ANDROID_CONFIG_DIR	"/data/data/com.cg.voiceservice/"
+#define CONFIG_DIR	""
 #define HSB_CONFIG_FILE		"hsb.xml"
 
-#define LINUX_ETH_INTERFACE	"br-lan"
-#define ANDROID_ETH_INTERFACE	"wlan0"
+#define ETH_INTERFACE	"br-lan"
 
 #define MAX_TCP_CLIENT_NUM	(10)
 

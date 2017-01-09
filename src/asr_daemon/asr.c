@@ -42,6 +42,11 @@ enum {
 #define ASR_MFREE	free
 #define ASR_MEMSET	memset
 
+extern Proc_QISRSessionBegin _QISRSessionBegin;
+extern Proc_QISRSessionEnd _QISRSessionEnd;
+extern Proc_QISRAudioWrite _QISRAudioWrite;
+extern Proc_QISRGetResult _QISRGetResult;
+
 static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int len);
 
 static void Sleep(size_t ms)
@@ -56,8 +61,8 @@ static void end_asr_on_error(struct asr_rec *asrr, int errcode)
 	const char *errstr;
 
 	if (asrr->session_id) {
-		QISRSessionEnd(asrr->session_id, "err");
-			
+		_QISRSessionEnd(asrr->session_id, "err");
+
 		asrr->session_id = NULL;
 	}
 
@@ -166,7 +171,7 @@ int asr_start_listening(struct asr_rec *asrr, const char *grammar_id)
 		return -E_ASR_ALREADY;
 	}
 
-	session_id = QISRSessionBegin(grammar_id, asrr->session_params, &errcode);
+	session_id = _QISRSessionBegin(grammar_id, asrr->session_params, &errcode);
 	if (MSP_SUCCESS != errcode)
 	{
 		asr_dbg("\nQISRSessionBegin failed! error code:%d\n", errcode);
@@ -180,7 +185,7 @@ int asr_start_listening(struct asr_rec *asrr, const char *grammar_id)
 	if (ret != 0) {
 		asr_dbg("start record failed: %d\n", ret);
                 snprintf(sse_hints, sizeof(sse_hints), "start_record errorCode=%d", ret);
-		QISRSessionEnd(session_id, sse_hints);
+		_QISRSessionEnd(session_id, sse_hints);
 		asrr->session_id = NULL;
 		return -E_ASR_RECORDFAIL;
 	}
@@ -220,14 +225,14 @@ int asr_stop_listening(struct asr_rec *asrr)
 
 	asrr->state = ASR_STATE_INIT;
 
-	ret = QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_status, &rec_status);
+	ret = _QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_status, &rec_status);
 	if (ret != 0) {
 		asr_dbg("write LAST_SAMPLE failed: %d\n", ret);
-		QISRSessionEnd(asrr->session_id, "QISRAudioWrite fail");
+		_QISRSessionEnd(asrr->session_id, "QISRAudioWrite fail");
 		return ret;
 	}
 
-	QISRSessionEnd(asrr->session_id, "stop ok");
+	_QISRSessionEnd(asrr->session_id, "stop ok");
 	asrr->session_id = NULL;
 	return 0;
 }
@@ -243,7 +248,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 	if (!data || !len)
 		return 0;
 
-	ret = QISRAudioWrite(asrr->session_id, data, len, asrr->audio_status, &ep_stat, &rec_stat);
+	ret = _QISRAudioWrite(asrr->session_id, data, len, asrr->audio_status, &ep_stat, &rec_stat);
 	if (ret) {
 		end_asr_on_error(asrr, ret);
 
@@ -257,7 +262,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 
 		memset(rec_result, 0, sizeof(rec_result));
 #if 1
-		ret = QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_stat, &rec_stat);
+		ret = _QISRAudioWrite(asrr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST, &ep_stat, &rec_stat);
 
 		if (ret) {
 			printf("QISRAudioWrite failed, err=%d\n", ret);
@@ -267,7 +272,7 @@ static int asr_write_audio_data(struct asr_rec *asrr, char *data, unsigned int l
 
 		while (MSP_REC_STATUS_COMPLETE != rec_stat) {
 			int errcode, total_len = 0;
-			const char *rslt = QISRGetResult(asrr->session_id, &rec_stat, 0, &errcode);
+			const char *rslt = _QISRGetResult(asrr->session_id, &rec_stat, 0, &errcode);
 	                if (MSP_SUCCESS != errcode)
 			{
 				printf("\nQISRGetResult failed, error code: %d\n", errcode);

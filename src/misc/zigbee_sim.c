@@ -12,8 +12,8 @@
 #include "unix_socket.h"
 #include "hsb_config.h"
 
-#define LISTEN_PATH	LINUX_WORK_DIR"test2.listen"
-#define SEND_PATH	LINUX_WORK_DIR"test.listen"
+#define LISTEN_PATH	WORK_DIR"test2.listen"
+#define SEND_PATH	WORK_DIR"test.listen"
 
 int deal_sock_cmd(int fd, uint8_t *buf, int len)
 {

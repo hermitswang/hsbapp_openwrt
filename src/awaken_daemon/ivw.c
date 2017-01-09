@@ -43,6 +43,11 @@ enum {
 
 static int ivw_write_audio_data(struct ivw_rec *ivwr, char *data, unsigned int len);
 
+extern Proc_QIVWSessionBegin _QIVWSessionBegin;
+extern Proc_QIVWRegisterNotify _QIVWRegisterNotify;
+extern Proc_QIVWSessionEnd _QIVWSessionEnd;
+extern Proc_QIVWAudioWrite _QIVWAudioWrite;
+
 static void Sleep(size_t ms)
 {
 	usleep(ms*1000);
@@ -54,7 +59,7 @@ static void end_ivw_on_error(struct ivw_rec *ivwr, int errcode)
 	stop_record(ivwr->recorder);
 	
 	if (ivwr->session_id) {
-		QIVWSessionEnd(ivwr->session_id, "err");
+		_QIVWSessionEnd(ivwr->session_id, "err");
 		ivwr->session_id = NULL;
 	}
 
@@ -172,19 +177,19 @@ int ivw_start_listening(struct ivw_rec *ivwr)
 		return -E_IVW_ALREADY;
 	}
 
-	session_id = QIVWSessionBegin(NULL, ivwr->session_params, &errcode);
+	session_id = _QIVWSessionBegin(NULL, ivwr->session_params, &errcode);
 	if (MSP_SUCCESS != errcode)
 	{
 		ivw_dbg("\nQISRSessionBegin failed! error code:%d\n", errcode);
 		return errcode;
 	}
 
-	errcode = QIVWRegisterNotify(session_id, cb_ivw_msg_proc, (void *)ivwr);
+	errcode = _QIVWRegisterNotify(session_id, cb_ivw_msg_proc, (void *)ivwr);
 	if (errcode != MSP_SUCCESS)
         {
                 snprintf(sse_hints, sizeof(sse_hints), "QIVWRegisterNotify errorCode=%d", errcode);
                 printf("QIVWRegisterNotify failed! error code:%d\n", errcode);
-		QIVWSessionEnd(session_id, sse_hints);
+		_QIVWSessionEnd(session_id, sse_hints);
 		ivwr->session_id = NULL;
 		return errcode;
         }
@@ -196,7 +201,7 @@ int ivw_start_listening(struct ivw_rec *ivwr)
 	if (ret != 0) {
 		ivw_dbg("start record failed: %d\n", ret);
                 snprintf(sse_hints, sizeof(sse_hints), "start_record errorCode=%d", ret);
-		QIVWSessionEnd(session_id, sse_hints);
+		_QIVWSessionEnd(session_id, sse_hints);
 		ivwr->session_id = NULL;
 		return -E_IVW_RECORDFAIL;
 	}
@@ -235,14 +240,14 @@ int ivw_stop_listening(struct ivw_rec *ivwr)
 
 	ivwr->state = IVW_STATE_INIT;
 
-	ret = QIVWAudioWrite(ivwr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST);
+	ret = _QIVWAudioWrite(ivwr->session_id, NULL, 0, MSP_AUDIO_SAMPLE_LAST);
 	if (ret != 0) {
 		ivw_dbg("write LAST_SAMPLE failed: %d\n", ret);
-		QIVWSessionEnd(ivwr->session_id, "QIVWAudioWrite fail");
+		_QIVWSessionEnd(ivwr->session_id, "QIVWAudioWrite fail");
 		return ret;
 	}
 
-	QIVWSessionEnd(ivwr->session_id, "stop ok");
+	_QIVWSessionEnd(ivwr->session_id, "stop ok");
 	ivwr->session_id = NULL;
 	return 0;
 }
@@ -256,7 +261,7 @@ static int ivw_write_audio_data(struct ivw_rec *ivwr, char *data, unsigned int l
 	if (!data || !len)
 		return 0;
 
-	ret = QIVWAudioWrite(ivwr->session_id, data, len, ivwr->audio_status);
+	ret = _QIVWAudioWrite(ivwr->session_id, data, len, ivwr->audio_status);
 	if (ret) {
 		end_ivw_on_error(ivwr, ret);
 		return ret;

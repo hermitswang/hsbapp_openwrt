@@ -354,34 +354,14 @@ uint64_t get_msec(void)
 	return (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 }
 
-bool is_android(void)
-{
-	return (0 == access("/system/bin", F_OK));
-}
-
 const char *get_work_dir(void)
 {
-	const char *work_dir;
-
-	if (is_android())
-		work_dir = ANDROID_WORK_DIR;
-	else
-		work_dir = LINUX_WORK_DIR;
-
-	return work_dir;
+	return WORK_DIR;
 }
 
 const char *get_eth_interface(void)
 {
-	const char *eth_interface;
-
-	if (is_android())
-		eth_interface = ANDROID_ETH_INTERFACE;
-	else
-		eth_interface = LINUX_ETH_INTERFACE;
-
-	return eth_interface;
-
+	return ETH_INTERFACE;
 }
 
 const char *get_uart_interface(void)
@@ -399,12 +379,7 @@ const char *get_uart_interface(void)
 
 void get_config_file(char *path)
 {
-	if (is_android())
-	{
-		sprintf(path, ANDROID_CONFIG_DIR"%s", HSB_CONFIG_FILE);
-	} else {
-		sprintf(path, LINUX_CONFIG_DIR"%s", HSB_CONFIG_FILE);
-	}
+	sprintf(path, CONFIG_DIR"%s", HSB_CONFIG_FILE);
 }
 
 int str_to_mac(char *buf, uint8_t *pmac)

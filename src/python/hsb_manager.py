@@ -478,7 +478,8 @@ class hsb_manager(threading.Thread):
 
         return asrkey
 
-
+    def on_asr_result(result):
+        pass
 
 
 

@@ -5,7 +5,7 @@ OBJS=${SRC:%.c=%.o}
 NAME=${SRC:%.c=%}
 DEPS=$(SRC:%.c=.dep/*.d)
 CFLAGS+= -I./lib/inc
-LDFLAGS+= -L./lib -lmsc
+LDFLAGS+= -ldl
 
 ${TARGET}:  ${OBJS} $(HSB_LIBS)
 	${CC}  -o $@ ${OBJS} ${LDFLAGS}

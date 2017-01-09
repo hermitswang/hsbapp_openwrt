@@ -10,6 +10,8 @@
 #include "debug.h"
 #include "utils.h"
 
+#include <dlfcn.h>
+
 #include "qisr.h"
 #include "msp_cmn.h"
 #include "msp_errors.h"
@@ -32,9 +34,54 @@ static struct asr_notifier notify = {
 
 static bool working = false;
 static const char *ssb_param = "sub = asr, result_type = plain, result_encoding = utf8";
-static const char *login_params = "appid = 57e4884c, work_dir = /tmp/hsb";
+static const char *login_params = "appid = 587333fc, work_dir = /tmp/hsb";
 
 static char grammar_id[GRAMID_LEN];
+
+Proc_MSPLogin _MSPLogin;
+Proc_MSPLogout _MSPLogout;
+Proc_MSPUploadData _MSPUploadData;
+Proc_QISRSessionBegin _QISRSessionBegin;
+Proc_QISRSessionEnd _QISRSessionEnd;
+Proc_QISRAudioWrite _QISRAudioWrite;
+Proc_QISRGetResult _QISRGetResult;
+
+static int load_lib(void)
+{
+	void *handle = dlopen(WORK_DIR"libmsc.so", RTLD_NOW);
+	if (!handle) {
+		hsb_critical("load lib failed\n");
+		return -1;
+	}
+
+	Proc_MSPLogin login = (Proc_MSPLogin)dlsym(handle, "MSPLogin");
+	Proc_MSPLogout logout = (Proc_MSPLogout)dlsym(handle, "MSPLogout");
+	Proc_MSPUploadData upload = (Proc_MSPUploadData)dlsym(handle, "MSPUploadData");
+	if (!login || !logout || !upload) {
+		hsb_critical("MSPLogin/MSPLogout/MSPUploadData not found\n");
+		return -2;
+	}
+
+	Proc_QISRSessionBegin begin = (Proc_QISRSessionBegin)dlsym(handle, "QISRSessionBegin");
+	Proc_QISRSessionEnd end = (Proc_QISRSessionEnd)dlsym(handle, "QISRSessionEnd");
+	Proc_QISRAudioWrite write = (Proc_QISRAudioWrite)dlsym(handle, "QISRAudioWrite");
+	Proc_QISRGetResult result = (Proc_QISRGetResult)dlsym(handle, "QISRGetResult");
+
+	if (!begin || !end || !write || !result) {
+		hsb_critical("QISRSessionBegin/QISRSessionEnd/QISRAudioWrite/QISRGetResult not found\n");
+		return -3;
+	}
+
+	_MSPLogin = login;
+	_MSPLogout = logout;
+	_MSPUploadData = upload;
+	_QISRSessionBegin = begin;
+	_QISRSessionEnd = end;
+	_QISRAudioWrite = write;
+	_QISRGetResult = result;
+
+	return 0;
+}
 
 int upload_grammar(const char *file)
 {
@@ -70,7 +117,7 @@ int upload_grammar(const char *file)
 	}
 	grammar[grammar_len] = '\0';
 
-	ret_id = MSPUploadData("usergram", grammar, grammar_len, "dtt = abnf, sub = asr", &ret);
+	ret_id = _MSPUploadData("usergram", grammar, grammar_len, "dtt = abnf, sub = asr", &ret);
 	if (MSP_SUCCESS != ret)
 	{
 		printf("\nMSPUploadData failed, error code: %d.\n", ret);
@@ -235,16 +282,32 @@ static void _stop(void)
 		return;
 
 	char path[MAXPATH];
-	snprintf(path, sizeof(path), LINUX_WORK_DIR"%s", hsb_asr_daemon_config.unix_listen_path);
+	snprintf(path, sizeof(path), WORK_DIR"%s", hsb_asr_daemon_config.unix_listen_path);
 
 	unix_socket_send_to(fd , path,
 				send_str , strlen(send_str) );
 	unix_socket_free(fd);
 }
 
+#define FEEDBACK_PATH	WORK_DIR"hsb_audio.listen"
+
+static int feedback(char *buf)
+{
+	int fd = unix_socket_new();
+	if (fd < 0)
+		return -1;
+
+	int ret = unix_socket_send_to(fd, FEEDBACK_PATH, buf, strlen(buf));
+
+	unix_socket_free(fd);
+	return 0;
+}
+
 static void on_asr_error(int errcode)
 {
 	printf("asr error: %d\n", errcode);
+
+	feedback("asr fail");
 
 	if (working) {
 		asr_stop_listening(&asrr);
@@ -256,6 +319,13 @@ static void on_asr_error(int errcode)
 static void on_asr_result(const char *result)
 {
 	printf("asr result: %s\n", result);
+
+	char buf[MAXLINE];
+
+	snprintf(buf, sizeof(buf), "asr_result=%s", result);
+
+	feedback(buf);
+
 	if (working) {
 		_stop();
 	}
@@ -327,14 +397,17 @@ int main(int argc, char* argv[])
 		default:
 			break;
 		}
- 
+
+	if (load_lib())
+		return -1;
+
 	if (!daemon_init(&hsb_asr_daemon_config, background))
 	{
 		hsb_critical("init asr daemon error\n");
 		return -1;
 	}
 	
-	ret = MSPLogin(NULL, NULL, login_params);
+	ret = _MSPLogin(NULL, NULL, login_params);
 	if (MSP_SUCCESS != ret)
 	{
 		printf("MSPLogin failed, error code: %d.\n",ret);
@@ -356,7 +429,7 @@ again:
 		}
 	}
 
-	MSPLogout();
+	_MSPLogout();
 
 	return 0;
 }
