@@ -25,6 +25,7 @@ class hsb_dev_type:
     SENSOR = 'sensor'
     REMOTE_CTL = 'remotectl'
     IR = 'ir'
+    RELAY = 'relay'
 
 class hsb_ep_type:
     NORMAL = 'normal'

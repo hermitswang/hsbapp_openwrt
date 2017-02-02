@@ -17,11 +17,11 @@ class orange_cmd:
 
 class ep_orange(hsb_endpoint):
     def __init__(self, ep, data=0):
-        epid = ep & 0xFF
-        bits = (ep & 0x3F00) >> 8
+        epid = (ep & 0xFF00) >> 8
+        bits = ep & 0x3F
         byte_num = int((bits + 7) / 8)
-        readable = (ep & 0x4000) > 0
-        writable = (ep & 0x8000) > 0
+        readable = (ep & 0x40) > 0
+        writable = (ep & 0x80) > 0
 
         self.bits = bits
         self.byte_num = byte_num
@@ -69,16 +69,28 @@ class dev_orange_remote_ctl(dev_orange):
 
         self.dev_type = hsb_dev_type.REMOTE_CTL
 
+class dev_orange_relay(dev_orange):
+    def __init__(self, driver, mac, addr, eps):
+        for ep in eps:
+            ep.set_attr('name', 'switch endpoint') 
+          
+        dev_orange.__init__(self, driver, mac, addr, eps)
+        self.set_attr('name', 'relay')
+
+        self.dev_type = hsb_dev_type.RELAY
+
 class orange_dev_type:
     PLUG = 0
     SENSOR = 1
     REMOTECTL = 2
+    RELAY = 3
 
 class drv_orange(hsb_driver):
     def __init__(self, manager):
         hsb_driver.__init__(self, manager)
         self.phy_name = hsb_phy_enum.ZIGBEE
         self.port = 8000
+        self.transid = 1
 
         self.data_cb = {}
         self.data_cb[orange_cmd.DISCOVER_RESP] = self.on_discover_resp
@@ -91,6 +103,8 @@ class drv_orange(hsb_driver):
             return dev_orange_plug(self, mac, addr, eps)
         elif dev_type == orange_dev_type.REMOTECTL:
             return dev_orange_remote_ctl(self, mac, addr, eps)
+        elif dev_type == orange_dev_type.RELAY:
+            return dev_orange_relay(self, mac, addr, eps)
         else:
             return None
 
@@ -123,7 +137,13 @@ class drv_orange(hsb_driver):
     def errcode_convert(self, errcode):
         return errcode
 
-    def on_discover_resp(self, addr, device, buf):
+    def discover(self, addr):
+        data = struct.pack('3H', orange_cmd.DISCOVER, 6, 0)
+        phy_data = hsb_phy_data(self.phy_name, addr, self.port, data, 1)
+
+        self.manager.dispatch(phy_data)
+
+    def on_discover_resp(self, addr, transid, buf):
         total = len(buf)
         if total < 12:
             log('discover resp len error: %d' % total)
@@ -131,9 +151,6 @@ class drv_orange(hsb_driver):
 
         data = struct.unpack('i8s', buf[:12])
         dev_type, mac = data
-
-        if device:
-            return
 
         if total == 12:
             log('device without any ep')
@@ -159,7 +176,12 @@ class drv_orange(hsb_driver):
 
         log('add device %d %s' % (device.devid, device.mac))
 
-    def on_update(self, addr, device, buf):
+    def on_update(self, addr, transid, buf):
+        device = self.find_device(addr)
+        if not device:
+            self.discover()
+            return
+
         eps = []
         while len(buf) > 2:
             ep, buf = self.parse_ep(buf)
@@ -168,10 +190,20 @@ class drv_orange(hsb_driver):
 
         device.on_update(eps)
 
-    def on_keepalive(self, addr, device, buf):
+    def on_keepalive(self, addr, transid, buf):
+        device = self.find_device(addr)
+        if not device:
+            self.discover(addr)
+            return
+
         device.on_keepalive()
 
-    def on_reply(self, addr, device, buf):
+    def on_reply(self, addr, transid, buf):
+        device = self.find_device(addr)
+        if not device:
+            self.discover()
+            return
+
         if len(buf) < 4:
             log('unknown reply, len=%d' % len(buf))
             return
@@ -202,7 +234,7 @@ class drv_orange(hsb_driver):
         port = phy_data.port
         buf = phy_data.data
 
-        # log('addr: %d, port: %d' % (addr, port))
+        #log('addr: %d, port: %d' % (addr, port))
 
         total = len(buf)
 
@@ -210,8 +242,8 @@ class drv_orange(hsb_driver):
             log('orange packet bad len: %d' % total)
             return
 
-        data = struct.unpack('2H', buf[:4])
-        cmd, length = data
+        data = struct.unpack('3H', buf[:6])
+        cmd, length, transid = data
         
         # log('cmd: %x, len=%d' % (cmd, length))
 
@@ -219,9 +251,8 @@ class drv_orange(hsb_driver):
             log('unknown cmd 0x%x' % cmd)
 
         cb = self.data_cb[cmd]
-        device = self.find_device(addr)
 
-        cb(addr, device, buf[4:])
+        cb(addr, transid, buf[6:])
 
     def set_eps(self, device, eps):
 
@@ -242,12 +273,16 @@ class drv_orange(hsb_driver):
                 data += struct.pack('I', val)
 
         length = len(data) + 4
+        transid = self.get_transid()
 
-        _data = struct.pack('2H', orange_cmd.SET, length) + data
+        _data = struct.pack('3H', orange_cmd.SET, length, transid) + data
 
         phy_data = hsb_phy_data(self.phy_name, device.addr, self.port, _data, 1)
 
         self.manager.dispatch(phy_data)
 
+    def get_transid(self):
+        self.transid = self.transid + 1
+        return self.transid
 
 

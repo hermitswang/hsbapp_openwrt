@@ -27,8 +27,8 @@ def parse_data(data):
     if len(data) < 12:
         return
 
-    words = struct.unpack('6H', data[:12])
-    _magic, _len, _addr, _port, cmd, cmdlen = words
+    words = struct.unpack('7H', data[:14])
+    _magic, _len, _addr, _port, cmd, cmdlen, transid = words
 
     if _magic != magic:
         return
@@ -39,7 +39,7 @@ def parse_data(data):
     if _addr != addr or port != _port:
         return
 
-    data = data[12:]
+    data = data[14:]
     if cmd == orange_cmd.SET:
         if len(data) < 3:
             return
@@ -61,13 +61,13 @@ def parse_data(data):
 
 def send_discover_resp():
     ep = eps[0]
-    data = struct.pack('6HI8sHB', magic, 27, addr, port, orange_cmd.DISCOVER_RESP, 19, 0, b'\x01\x02\x03\x04\x05\x06\x07\x08', 0xC100, ep['val'])
+    data = struct.pack('7HI8sHB', magic, 29, addr, port, orange_cmd.DISCOVER_RESP, 21, 0, 0, b'\x01\x02\x03\x04\x05\x06\x07\x08', 0xC100, ep['val'])
 
     un_send('/tmp/hsb/un_zigbee_test.listen', data)
 
 def send_keepalive():
     ep = eps[0]
-    data = struct.pack('6H', magic, 12, addr, port, orange_cmd.KEEP_ALIVE, 4)
+    data = struct.pack('7H', magic, 14, addr, port, orange_cmd.KEEP_ALIVE, 4, 0)
 
     un_send('/tmp/hsb/un_zigbee_test.listen', data)
 
@@ -92,9 +92,9 @@ def parse_cmd(cmd):
         send_update(ep)
 
 def send_update(ep):
-    length = 15
+    length = 17
     epdata = ep['epid'] | 0xC100
-    data = struct.pack('7HB', magic, length, addr, port, orange_cmd.UPDATE, 7, epdata, ep['val'])
+    data = struct.pack('8HB', magic, length, addr, port, orange_cmd.UPDATE, 9, 0, epdata, ep['val'])
 
     un_send('/tmp/hsb/un_zigbee_test.listen', data)
 

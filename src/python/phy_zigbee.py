@@ -7,8 +7,8 @@ import serial, queue, threading, select, struct
 
 
 class phy_data_zigbee(hsb_phy_data):
+    MAGIC = 0x55AA
     def __init__(self, data):
-        self.phy_zigbee_magic = 0x55AA
         if isinstance(data, hsb_phy_data):
             direction = 1
         else:
@@ -23,9 +23,36 @@ class phy_data_zigbee(hsb_phy_data):
             self.raw_data = self.make_header(addr, port, _data)
             hsb_phy_data.__init__(self, hsb_phy_enum.ZIGBEE, addr, port, _data, direction)
 
+    def check_magic(data):
+        length = len(data)
+        if length < 8:
+            return False
+
+        header = data[:8]
+
+        h = struct.unpack('4H', header)
+        if h[0] != phy_data_zigbee.MAGIC:
+            #log('invalid magic %s' % h[0])
+            return False
+
+        return True
+
+    def check_length(data):
+        length = len(data)
+        if length < 8:
+            return False
+
+        header = data[:8]
+        h = struct.unpack('4H', header)
+        if length != h[1]:
+            #log('bad len %d/%d' % (h[1], length))
+            return False
+   
+        return True
+ 
     def make_header(self, addr, port, data):
         length = 8 + len(data)
-        _data = struct.pack('4H', self.phy_zigbee_magic, length, addr, port)
+        _data = struct.pack('4H', phy_data_zigbee.MAGIC, length, addr, port)
         return _data + data
 
     def parse_header(self, data):
@@ -35,8 +62,8 @@ class phy_data_zigbee(hsb_phy_data):
 
         header = data[:8]
 
-        h = struct.unpack('4h', header)
-        if h[0] != self.phy_zigbee_magic:
+        h = struct.unpack('4H', header)
+        if h[0] != phy_data_zigbee.MAGIC:
             log('invalid magic %s' % h[0])
             return (None, None, None)
 
@@ -65,19 +92,39 @@ class phy_zigbee(hsb_phy):
         t.start()
         self.work_thread = t
 
+        self.clear()
+
+    def clear(self):
+        self.buf = ''.encode()
+
     def write(self, data):
         _data = phy_data_zigbee(data)
-        # self.outq.put(_data.raw_data) TODO
-        log(_data.raw_data)
-        un_send('/tmp/hsb/un_zigbee_test2.listen', _data.raw_data)
+        log('write uart: %s' % _data.raw_data)
+        self.outq.put(_data.raw_data)
+        #un_send('/tmp/hsb/un_zigbee_test2.listen', _data.raw_data)
+        un_send(self.un_path, _data.raw_data)
 
     def on_data(self, data):
-        phy_data = phy_data_zigbee(data)
+        buf = self.buf + data
+
+        if not phy_data_zigbee.check_magic(buf):
+            self.clear()
+            return
+
+        if not phy_data_zigbee.check_length(buf):
+            self.buf = buf
+            return
+
+        phy_data = phy_data_zigbee(buf)
+
+        #log(buf)
 
         if not phy_data.valid:
+            self.clear()
             return
 
         self.on_data_ind(phy_data)
+        self.clear()
 
     def exit(self):
         self._exit = True
@@ -90,7 +137,7 @@ class phy_zigbee(hsb_phy):
             log('un_sock fail')
             return
 
-        test = True
+        test = False
         if not test:
             uart = serial.Serial(self.uart_interface, self.uart_baudrate)
             if not uart:
@@ -115,7 +162,8 @@ class phy_zigbee(hsb_phy):
 
                 elif s is uart:
                     if isinstance(s, serial.Serial):
-                        data = s.read(1024)
+                        n = s.inWaiting()
+                        data = s.read(n)
                     else:
                         data, addr = s.recvfrom(1024)
 
