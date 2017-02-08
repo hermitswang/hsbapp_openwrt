@@ -141,7 +141,7 @@ class phy_zigbee(hsb_phy):
         if not test:
             uart = serial.Serial(self.uart_interface, self.uart_baudrate)
             if not uart:
-                log('open uart fail')
+                log('open uart %s fail' % self.uart_interface)
                 return
         else: # test
             test_path = '/tmp/hsb/un_zigbee_test.listen'

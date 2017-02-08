@@ -29,4 +29,7 @@ def un_send(path, data):
 
     return True
 
+def un_sends(path, buf):
+    return un_send(path, buf.encode())
+
 
