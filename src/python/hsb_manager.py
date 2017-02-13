@@ -431,8 +431,6 @@ class hsb_manager(threading.Thread):
                 if drv:
                     drv.timeout(dev)
 
-                dev.offline()
-
     def do_actions(self, actions):
         dev_acts = {}
         for act in actions:

@@ -103,6 +103,7 @@ class hsb_audio(threading.Thread):
         self.manager = manager
         self.state = hsb_audio.IDLE
 
+        statem = {}
         statem[hsb_audio.IDLE] = hsb_idle()
         statem[hsb_audio.SLEEP] = hsb_awaken()
         statem[hsb_audio.RECOGNIZE] = hsb_asr()
@@ -116,6 +117,8 @@ class hsb_audio(threading.Thread):
         self.uart_baudrate = 38400
 
         self.bt_state = 0
+
+        self.test = True
 
     def transit(self, new_state):
         old = self.state
@@ -191,14 +194,21 @@ class hsb_audio(threading.Thread):
         if not self.listen:
             return
 
-        uart = serial.Serial(self.uart_interface, self.uart_baudrate)
-        if not uart:
-            log('open uart %s fail' % self.uart_interface)
-            return
+        if not self.test:
+            uart = serial.Serial(self.uart_interface, self.uart_baudrate)
+            if not uart:
+                log('open uart %s fail' % self.uart_interface)
+                return
+        else:
+            uart = None
 
         # TODO: enter sleep state
 
-        inputs = [ self.listen, uart ]
+        if not self.test:
+            inputs = [ self.listen, uart ]
+        else:
+            inputs = [ self.listen ]
+
         outputs = []
 
         while not self._exit:
@@ -214,9 +224,9 @@ class hsb_audio(threading.Thread):
 
                     log('get msg: %s' % data)
                     self.on_result(data)
-            elif s is uart:
-                n = s.inWaiting()
-                data = s.read(n)
-                self.on_data(data)
+                elif s is uart:
+                    n = s.inWaiting()
+                    data = s.read(n)
+                    self.on_data(data)
 
 

@@ -26,6 +26,7 @@ class hsb_dev_type:
     REMOTE_CTL = 'remotectl'
     IR = 'ir'
     RELAY = 'relay'
+    CURTAIN = 'curtain'
 
 class hsb_ep_type:
     NORMAL = 'normal'
@@ -300,6 +301,7 @@ class hsb_device:
 
         event = hsb_event(hsb_event.DEVS_OFFLINE, ob)
         self.upload(event)     
+        log('dev %d offline' % self.devid)
 
     def online(self):
         ob = self.get_ob()

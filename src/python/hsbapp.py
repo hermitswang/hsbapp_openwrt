@@ -11,9 +11,12 @@ from drv_orange import drv_orange
 from phy_zigbee import phy_zigbee
 
 from time import sleep
+import os
 
 if __name__ == '__main__':
     log_init()
+
+    os.system('rm /tmp/hsb/*.listen')
 
     manager = hsb_manager()
 

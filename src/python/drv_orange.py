@@ -79,11 +79,22 @@ class dev_orange_relay(dev_orange):
 
         self.dev_type = hsb_dev_type.RELAY
 
+class dev_orange_curtain(dev_orange):
+    def __init__(self, driver, mac, addr, eps):
+        for ep in eps:
+            ep.set_attr('name', 'curtain endpoint') 
+          
+        dev_orange.__init__(self, driver, mac, addr, eps)
+        self.set_attr('name', 'curtain')
+
+        self.dev_type = hsb_dev_type.CURTAIN
+
 class orange_dev_type:
     PLUG = 0
     SENSOR = 1
     REMOTECTL = 2
     RELAY = 3
+    CURTAIN = 4
 
 class drv_orange(hsb_driver):
     def __init__(self, manager):
@@ -105,6 +116,8 @@ class drv_orange(hsb_driver):
             return dev_orange_remote_ctl(self, mac, addr, eps)
         elif dev_type == orange_dev_type.RELAY:
             return dev_orange_relay(self, mac, addr, eps)
+        elif dev_type == orange_dev_type.CURTAIN:
+            return dev_orange_curtain(self, mac, addr, eps)
         else:
             return None
 
@@ -156,6 +169,10 @@ class drv_orange(hsb_driver):
             log('device without any ep')
             return
  
+        device = self.find_device(addr)
+        if device:
+            return
+
         buf = buf[12:]
         eps = []
 
@@ -196,6 +213,7 @@ class drv_orange(hsb_driver):
             self.discover(addr)
             return
 
+        #log('keepalive')
         device.on_keepalive()
 
     def on_reply(self, addr, transid, buf):

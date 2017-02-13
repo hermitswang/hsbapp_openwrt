@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from hsb_debug import log
-from unix_socket import un_send, un_new_listen
+from unix_socket import un_send, un_sends, un_new_listen
 from hsb_phy import hsb_phy, hsb_phy_enum, hsb_phy_data
 import serial, queue, threading, select, struct
 
@@ -45,7 +45,7 @@ class phy_data_zigbee(hsb_phy_data):
         header = data[:8]
         h = struct.unpack('4H', header)
         if length != h[1]:
-            #log('bad len %d/%d' % (h[1], length))
+            log('bad len %d/%d' % (h[1], length))
             return False
    
         return True
@@ -81,6 +81,8 @@ class phy_zigbee(hsb_phy):
         hsb_phy.__init__(self, manager)
         self.name = hsb_phy_enum.ZIGBEE
 
+        self.test = True
+
         self.uart_interface = '/dev/ttyS1'
         self.uart_baudrate = 115200
 
@@ -99,10 +101,9 @@ class phy_zigbee(hsb_phy):
 
     def write(self, data):
         _data = phy_data_zigbee(data)
-        log('write uart: %s' % _data.raw_data)
-        self.outq.put(_data.raw_data)
-        #un_send('/tmp/hsb/un_zigbee_test2.listen', _data.raw_data)
-        un_send(self.un_path, _data.raw_data)
+        #log('write uart: %s' % _data.raw_data)
+        self.outq.put(_data)
+        un_sends(self.un_path, 'notify')
 
     def on_data(self, data):
         buf = self.buf + data
@@ -128,7 +129,7 @@ class phy_zigbee(hsb_phy):
 
     def exit(self):
         self._exit = True
-        un_send(self.un_path, 'notify'.encode())
+        un_sends(self.un_path, 'notify')
         self.work_thread.join()
 
     def work_proc(self):
@@ -137,8 +138,7 @@ class phy_zigbee(hsb_phy):
             log('un_sock fail')
             return
 
-        test = False
-        if not test:
+        if not self.test:
             uart = serial.Serial(self.uart_interface, self.uart_baudrate)
             if not uart:
                 log('open uart %s fail' % self.uart_interface)
@@ -167,6 +167,7 @@ class phy_zigbee(hsb_phy):
                     else:
                         data, addr = s.recvfrom(1024)
 
+                    # log(data)
                     self.on_data(data)
 
             for s in writable:
@@ -177,9 +178,9 @@ class phy_zigbee(hsb_phy):
                         outputs.remove(s)
                     else:
                         if isinstance(s, serial.Serial):
-                            s.write(data)
+                            s.write(data.raw_data)
                         else:
-                            s.sendto(data.encode(), '/tmp/hsb/un_zigbee_test2.listen')
-
+                            path = '/tmp/hsb/un_zigbee_sim-%d:%d.listen' % (data.addr, data.port)
+                            s.sendto(data.raw_data, path)
 
 
