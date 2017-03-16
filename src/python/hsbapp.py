@@ -4,7 +4,6 @@ from hsb_debug import log, log_init
 from hsb_network import hsb_network
 from hsb_manager import hsb_manager
 from hsb_audio import hsb_audio
-from hsb_timer import hsb_timer
 from hsb_config import hsb_config
 
 from drv_orange import drv_orange
@@ -32,9 +31,6 @@ if __name__ == '__main__':
     audio = hsb_audio(manager)
     manager.set_audio(audio)
     audio.start()
-
-    timer = hsb_timer(manager)
-    manager.set_timer(timer)
 
     network = hsb_network(manager)
     network.start()

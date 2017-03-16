@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from hsb_device import hsb_dev_action
 from hsb_debug import log
+from hsb_action import hsb_dev_action
 from time import time, localtime, strftime, strptime, mktime
 
 class hsb_dev_timer:
@@ -68,65 +68,60 @@ class hsb_dev_timer:
 
     def check(self, ts):
         if self.expired:
+            log('expired')
             return False
 
         if ts >= self.ts:
+            log('ts %d > self.ts %d' % (ts, self.ts))
             offset = ts - self.ts
             self.expired = True
             if offset < 3:
                 return True
+        else:
+            log('ts %d < self.ts %d' % (ts, self.ts))
 
         return False
 
-class hsb_timer:
-    def __init__(self, manager):
-        self.manager = manager
-        self.timers = {}
-
+class hsb_dev_timers:
+    def __init__(self):
+        self.timers = []
         tm = localtime()
         self.mday = tm.tm_mday
 
-    def get_ob(self):
-        ob = [ timer.get_ob() for timer in self.timers.values() if timer.valid ]
-        return ob
+    def set_ob(self, tms):
+        timers = []
 
-    def set_timers(self, timers):
-        for tm in timers:
+        for tm in tms:
             timer = hsb_dev_timer(tm)
             if not timer.valid:
                 log('timer invalid: %s' % tm)
                 continue
 
             timer.update(int(time()), localtime())
-            tmid = timer.tmid
-            self.timers[tmid] = timer
+            timers.append(timer)
+            log('add new timer')
 
-    def del_timers(self, timers):
-        for tm in timers:
-            if not 'tmid' in tm:
-                log('timer invalid: %s' % tm)
-                continue
+        self.timers = timers
 
-            tmid = tm['tmid']
-            if tmid in self.timers:
-                del self.timers[tmid]
+    def get_ob(self):
+        return [ tm.get_ob() for tm in self.timers ]
 
-    def check(self):
+    def get_timers(self):
+        return self.timers
+
+    def check(self, manager):
         now = int(time())
         lt = localtime()
 
-        for timer in self.timers.values():
+        for timer in self.timers:
+
             if not timer.check(now):
                 continue
 
             log('timer expiring...')
-            self.manager.do_actions([ timer.action ])
+            manager.do_actions([ timer.action ])
 
         if lt.tm_mday != self.mday:
             self.mday = lt.tm_mday
-
-            for timer in self.timers.values:
-                timer.update(now, lt)
-
-
+            timer.update(now, lt)
 

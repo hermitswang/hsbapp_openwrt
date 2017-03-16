@@ -35,9 +35,6 @@ class hsb_manager(threading.Thread):
     def set_audio(self, audio):
         self.audio = audio
 
-    def set_timer(self, timer):
-        self.timer = timer
-
     def set_config(self, config):
         self.config = config
 
@@ -58,7 +55,7 @@ class hsb_manager(threading.Thread):
                     event.clear()
                 else:
                     self.keepalive()
-                    self.timer.check()
+                    self.check_timers()
                     continue
 
             if self._exit:
@@ -115,7 +112,7 @@ class hsb_manager(threading.Thread):
 
     def deal_hsb_cmd(self, cmd):
         devices = self.devices
-        supported_cmds = [ 'get_devices', 'set_devices', 'get_scenes', 'set_scenes', 'del_scenes', 'enter_scene', 'add_devices', 'del_devices', 'set_timers','get_timers', 'del_timers', 'get_asrkey' ]
+        supported_cmds = [ 'get_devices', 'set_devices', 'get_scenes', 'set_scenes', 'del_scenes', 'enter_scene', 'add_devices', 'del_devices', 'get_asrkey' ]
         command = cmd.get('cmd')
 
         if not command in supported_cmds:
@@ -200,23 +197,6 @@ class hsb_manager(threading.Thread):
                 return
 
             self.del_ir_devices(ob)
-        elif command == 'set_timers':
-            ob = cmd.get('timers')
-            if not ob:
-                return
-
-            self.timer.set_timers(ob)
-        elif command == 'del_timers':
-            ob = cmd.get('timers')
-            if not ob:
-                return
-
-            self.timer.del_timers(ob)
-        elif command == 'get_timers':
-            ob = { 'timers': self.timer.get_ob() }
-            reply = hsb_reply(cmd, ob)
-
-            self.dispatch(reply)
 
     def add_phy(self, phy):
         phys = self.phys
@@ -417,6 +397,11 @@ class hsb_manager(threading.Thread):
 
         scene = self.scenes[name]
         scene.enter()
+
+    def check_timers(self):
+        timers = [ dev.timers for dev in self.devices.values() ]
+        for timer in timers:
+            timer.check(self)
 
     def dispatch(self, data):
         self.dataq.put(data)

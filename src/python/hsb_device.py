@@ -2,6 +2,8 @@
 
 from hsb_debug import log
 from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
+from hsb_timer import hsb_dev_timers
+from hsb_action import hsb_dev_action
 import queue
 
 def mac_to_smac(mac):
@@ -147,6 +149,8 @@ class hsb_device:
 
         self.channels = {}
 
+        self.timers = hsb_dev_timers()
+
         self.smac = mac_to_smac(mac)
 
         for ep in eps:
@@ -266,6 +270,9 @@ class hsb_device:
         if 'channels' in ob:
             self.channels.update(ob['channels'])
 
+        if 'timers' in ob:
+            self.timers.set_ob(ob['timers'])
+
     def get_ob(self):
         ob = { 'devid': self.devid, 'mac': self.smac, 'addr': self.addr, 'devtype': self.dev_type }
         ob['attrs'] = self.attrs
@@ -276,6 +283,9 @@ class hsb_device:
 
         if len(self.channels) > 0:
             ob['channels'] = self.channels
+
+        if len(self.timers.get_timers()) > 0:
+            ob['timers'] = self.timers.get_ob()
 
         return ob
 
@@ -328,25 +338,5 @@ class hsb_device:
 
     def find_eps_by_type(self, eptype):
         return [ ep for ep in self.eps.values() if ep.eptype == eptype ]
-
-class hsb_dev_action:
-    def __init__(self, act):
-        self.set_ob(act)
-
-    def set_ob(self, act):
-        self.valid = False
-        if not ('devid' in act and 'epid' in act and 'val' in act):
-            return
-
-        self.devid = act['devid']
-        self.epid = act['epid']
-        self.val = act['val']
-
-        self.valid = True
-
-    def get_ob(self):
-        ob = { 'devid': self.devid, 'epid': self.epid, 'val': self.val }
-        return ob
-
 
 
