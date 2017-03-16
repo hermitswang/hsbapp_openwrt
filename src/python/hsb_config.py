@@ -43,7 +43,8 @@ class hsb_config:
 
         return ob
 
-    def save(self, path, ob):
+    def save(self, filename, ob):
+        path = self.workdir + '/' + filename
         try:
             cfg = open(path, 'w')
         except Exception as e:

@@ -44,7 +44,7 @@ class hsb_endpoint:
         self.epid = epid
         self.val = val
 
-        self.attrs = {}
+        self.attrs = { 'name': '' }
         self.actions = {}
         self.eptype = eptype
 
@@ -60,6 +60,7 @@ class hsb_endpoint:
     def add_val(self, val, desc):
         value = { 'val': val, 'desc': desc }
         self.values.append(value)
+        self.valtype = hsb_ep_val_type.LIST
 
     def add_action(self, name, val):
         self.actions[name] = val
@@ -81,12 +82,6 @@ class hsb_endpoint:
 
     def set_attr(self, name, val):
         self.attrs[name] = val
-
-    def set_name(self, name):
-        self.name = name
-
-    def get_name(self):
-        return self.name
 
     def get_ob(self):
         ob = { 'epid': self.epid, 'readable': self.readable, 'writable': self.writable, 'valtype': self.valtype }
@@ -113,6 +108,27 @@ class hsb_endpoint:
     def press_key(self, key):
         pass
 
+    def get_asrkey(self, devid, devname):
+        valtype = self.valtype
+        name = '%s%s' % (devname, self.get_attr('name'))
+        if valtype == hsb_ep_val_type.BOOL:
+            act = '(开|关) {act} %s {ep%d-%d})' % (name, devid, self.epid)
+        elif valtype == hsb_ep_val_type.LIST:
+            vals = [ val.desc in self.values ]
+            if len(vals) == 0:
+                return ''
+
+            if len(vals) > 1:
+                value = '(%s)' % '|'.join(vals)
+            else:
+                value = vals[0]
+
+            act = '[设置] %s {ep%d-%d} %s {val}' % (name, devid, self.epid, value)
+        elif valtype == hsb_ep_val_type.INT:
+            act = '' # TODO
+
+        return act
+
 class hsb_device:
     def __init__(self, driver, mac, addr, eps):
         self.driver = driver
@@ -127,7 +143,7 @@ class hsb_device:
 
         self.cmds = { 'set_devices': self.set_ob }
 
-        self.attrs = { 'name': '', 'location': 'unset' }
+        self.attrs = { 'name': '', 'location': '' }
 
         self.channels = {}
 
@@ -138,13 +154,12 @@ class hsb_device:
 
     def get_asrkey(self):
         acts = []
+        name = self.attrs['name']
+        devid = self.devid
         for ep in self.eps.values():
-            act = ep.get_actions()
-            if not act:
-                continue
-
-            act = '(%s {act} %s%s {ep%d-%d})' % (act, self.get_attr('name'), ep.get_attr('name'), self.devid, ep.epid)
-            acts.append(act)
+            act = ep.get_asrkey(devid, name)
+            if len(act) > 0:
+                acts.append(act)
 
         channels = [ chan for chan in self.channels ]
         if len(channels) > 0:

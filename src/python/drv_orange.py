@@ -48,10 +48,6 @@ class dev_orange_plug(dev_orange):
     def __init__(self, driver, mac, addr, eps):
         for ep in eps:
             ep.set_attr('name', 'plug endpoint')
-            ep.add_action('开', 1)
-            ep.add_action('关', 0)
-            ep.add_val(0, '关')
-            ep.add_val(1, '开')
 
         dev_orange.__init__(self, driver, mac, addr, eps)
         self.set_attr('name', 'plug')
@@ -83,6 +79,7 @@ class dev_orange_curtain(dev_orange):
     def __init__(self, driver, mac, addr, eps):
         for ep in eps:
             ep.set_attr('name', 'curtain endpoint') 
+            ep.set_val_range(0, 100)
           
         dev_orange.__init__(self, driver, mac, addr, eps)
         self.set_attr('name', 'curtain')

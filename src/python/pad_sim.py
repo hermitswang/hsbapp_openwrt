@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, socket, json
+import sys, socket, json, struct
 from select import select
 
 def probe_hsb():
@@ -19,16 +19,29 @@ def probe_hsb():
     return servaddr
 
 def parse_data(data):
-    data = data.decode()
-    print(data)
+    while len(data) > 4:
+        hdr, length = struct.unpack('=2H', data[:4])
+        if hdr != 0x55AA:
+            log('bad magic message')
+            break
+
+        if length <= 4 or length > len(data):
+            log('bad length %d' % length)
+            break
+
+        cmd = data[4:length].decode()
+        print(cmd)
+
+        data = data[length:]
 
 def parse_cmd(cmd, sock):
     cmd = cmd[:-1]
 
     if cmd.startswith('raw='):
         content = cmd[len('raw='):]
+        data = struct.pack('=2H', 0x55AA, len(content) + 4) + content.encode()
         try:
-            sock.send(content.encode())
+            sock.send(data)
         except Exception:
             sys.exit(0)
 
@@ -57,8 +70,10 @@ def parse_cmd(cmd, sock):
     content = json.dumps(ob, ensure_ascii=False)
     print(content)
 
+    data = struct.pack('=2H', 0x55AA, len(content) + 4) + content.encode()
+
     try:
-        sock.send(content.encode())
+        sock.send(data)
     except Exception:
         sys.exit(0)
 

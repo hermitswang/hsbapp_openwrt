@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 
-import select
-import socket
-import sys
-import queue
-import os
-import threading
-
+import select, socket, sys, queue, os, threading, struct
 from hsb_debug import log
 from hsb_manager import hsb_manager
 from hsb_cmd import hsb_cmd, hsb_reply, hsb_event
@@ -23,6 +17,7 @@ class hsb_client:
         return str(self.address)
 
 class hsb_network(threading.Thread):
+    magic = 0x55AA
     def __init__(self, manager, udp_port=18000, tcp_port=18002):
         threading.Thread.__init__(self)
         self.manager = manager
@@ -160,12 +155,23 @@ class hsb_network(threading.Thread):
 
                     cli = clients[s]
                     if data:
-                        cmd = data.decode()
-                        log('received %s from %s' % (cmd, s.getpeername()))
-                        command = hsb_cmd(cli, cmd)
-                        if command.valid:
-                            self.deal_cmd(command)
+                        while len(data) > 4:
+                            hdr, length = struct.unpack('=2H', data[:4])
+                            if hdr != hsb_network.magic:
+                                log('bad magic message')
+                                break
 
+                            if length <= 4 or length > len(data):
+                                log('bad length %d' % length)
+                                break
+
+                            cmd = data[4:length].decode()
+                            log('received %s from %s' % (cmd, s.getpeername()))
+                            command = hsb_cmd(cli, cmd)
+                            if command.valid:
+                                self.deal_cmd(command)
+
+                            data = data[length:]
                     else:
                         if s in outputs:
                             outputs.remove(s)
@@ -183,9 +189,12 @@ class hsb_network(threading.Thread):
                 except queue.Empty:
                     outputs.remove(s)
                 else:
-                    data = reply.get()
-                    s.send(data.encode())
-                    log('send %s to client %s' % (data, s.getpeername()))
+                    cmd = reply.get()
+                    raw = cmd.encode()
+                    data = struct.pack('=2H', hsb_network.magic, len(raw) + 4) + raw
+                    
+                    s.send(data)
+                    log('send %s to client %s' % (cmd, s.getpeername()))
 
             for s in exceptional:
                 cli = clients[s]
@@ -197,7 +206,6 @@ class hsb_network(threading.Thread):
                 s.close()
                 del clients[s]
                 cli.valid = False
-
 
 if __name__ == '__main__':
     network = hsb_network()

@@ -13,6 +13,7 @@ class zigbee_dev_sim:
         dtype = ('%d' % devtype).encode()
         mac = b'\x01\x02\x03\x04\x05\x06\x07' + dtype
         self.mac = mac
+        self.devtype = devtype
         self.addr = 100 + devtype
         self.port = port
         self.eps = eps
@@ -76,7 +77,7 @@ class zigbee_dev_sim:
     
         tlen = 26 + len(edata)
     
-        data = struct.pack('=7HI8s', zigbee_dev_sim.magic, tlen, self.addr, self.port, orange_cmd.DISCOVER_RESP, tlen - 8, 0, 3, self.mac)
+        data = struct.pack('=7HI8s', zigbee_dev_sim.magic, tlen, self.addr, self.port, orange_cmd.DISCOVER_RESP, tlen - 8, 0, self.devtype, self.mac)
     
         data = data + edata
     
@@ -183,7 +184,7 @@ if __name__ == '__main__':
 
     if devtype == 'plug':
         dev = zigbee_plug()
-    if devtype == 'remotectl':
+    elif devtype == 'remotectl':
         dev = zigbee_rc()
     elif devtype == 'relay':
         dev = zigbee_relay()
